@@ -1,42 +1,35 @@
 import streamlit as st
-import google.generativeai as genai
 from PIL import Image
+import google.generativeai as genai
+import os
 
-# Configurazione della pagina
-st.set_page_config(page_title="Analizzatore Trading Operativo", layout="wide")
-st.title("Analizzatore Grafici Trading - Versione Operativa")
+# Configurazione sicura: legge la chiave dalle impostazioni di Streamlit
+# Non devi modificare nulla qui dentro!
+genai.configure(api_key=st.secrets["API_KEY"]) 
+model = genai.GenerativeModel('gemini-1.5-pro-latest')
 
-# Input chiave API
-api_key = st.text_input("Inserisci la tua API Key di Google:", type="password")
+# --- CSS PRO ---
+st.markdown("""
+<style>
+    .stApp { background-color: #0E1117; color: white; }
+    .signal-card { background-color: #1a1a1a; padding: 20px; border-radius: 15px; border: 2px solid #444; color: white; font-family: sans-serif; }
+    .stButton>button { width: 100%; border-radius: 10px; height: 3em; background-color: #FFD700; color: black; font-weight: bold; }
+</style>
+""", unsafe_allow_html=True)
 
-if api_key:
-    genai.configure(api_key=api_key)
-    # Utilizzo del modello verificato come attivo sul tuo account
-    model = genai.GenerativeModel('gemini-3.5-flash')
-    
-    uploaded_file = st.file_uploader("Carica lo screenshot del grafico...", type=["jpg", "png", "jpeg"])
-    
-    if uploaded_file is not None:
-        img = Image.open(uploaded_file)
-        st.image(img, caption="Grafico in analisi", use_container_width=True)
-        
-        if st.button("Analizza Operativamente"):
-            prompt = """
-            Analizza questo grafico di trading in modo estremamente operativo e professionale.
-            Non scrivere analisi generiche. Il tuo obiettivo è generare un setup di trading.
-            
-            Fornisci i dati in questo formato rigido:
-            1. ENTRY: [Prezzo di ingresso]
-            2. STOP LOSS: [Livello di protezione]
-            3. TARGET 1 (TP1): [Primo obiettivo]
-            4. TARGET 2 (TP2): [Secondo obiettivo]
-            5. RISCHIO/RENDIMENTO: [Rapporto calcolato]
-            6. MOTIVAZIONE: [Breve spiegazione tecnica basata su supporti/resistenze o pattern visibili]
-            
-            Se non vedi un setup chiaro, scrivi: "NESSUN SETUP CHIARO - ATTENDERE".
-            """
-            
-            with st.spinner('Analisi in corso...'):
-                response = model.generate_content([prompt, img])
-                st.subheader("Risultato Analisi:")
-                st.write(response.text)
+# --- ANALISI ---
+def analyze_chart(image_file):
+    system_prompt = "Sei un analista tecnico senior. Analizza il layout a 3 grafici (H1, M15, M5) e fornisci: SENTIMENT, ENTRY, SL, TP1, TP2, RR e Motivazione Tecnica."
+    try:
+        img = Image.open(image_file)
+        response = model.generate_content([system_prompt, img])
+        return response.text
+    except Exception as e:
+        return f"Errore: {str(e)}"
+
+# --- INTERFACCIA ---
+st.title("⚡ Pro-Trade AI Dashboard")
+uploaded_file = st.file_uploader("Carica layout (H1, M15, M5)", type=["jpg", "png"])
+if uploaded_file and st.button("ANALIZZA"):
+    result = analyze_chart(uploaded_file)
+    st.markdown(f"<div class='signal-card'>{result}</div>", unsafe_allow_html=True)
