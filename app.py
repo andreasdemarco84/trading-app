@@ -438,4 +438,3 @@ unsafe_allow_html=True,
 )
 
 st.caption("⚠️ ProTrade AI è uno strumento di supporto. Non è consulenza finanziaria. Gestisci sempre il rischio.")
-
