@@ -12,7 +12,7 @@ from PIL import Image
 # =========================
 st.set_page_config(page_title="ProTrade AI", page_icon="⚡", layout="wide")
 
-try:
+
 genai.configure(api_key=st.secrets["API_KEY"])
 model = genai.GenerativeModel("gemini-2.5-flash")
 except Exception as e:
