@@ -2,7 +2,7 @@ import streamlit as st
 from PIL import Image
 import google.generativeai as genai
 import os
-
+⁠model = genai.GenerativeModel('gemini-1.5-pro')⁠
 # Configurazione sicura: legge la chiave dalle impostazioni di Streamlit
 # Non devi modificare nulla qui dentro!
 genai.configure(api_key=st.secrets["API_KEY"]) 
