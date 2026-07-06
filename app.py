@@ -15,9 +15,8 @@ st.set_page_config(page_title="ProTrade AI", page_icon="⚡", layout="wide")
 
 genai.configure(api_key=st.secrets["API_KEY"])
 model = genai.GenerativeModel("gemini-2.5-flash")
-except Exception as e:
-st.error(f"Errore configurazione Gemini/API_KEY: {e}")
-st.stop()
+
+
 
 # =========================
 # CSS
