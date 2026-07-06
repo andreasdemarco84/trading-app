@@ -1,277 +1,441 @@
 import json
 import re
 from datetime import datetime
+from typing import Any, Dict
 
 import google.generativeai as genai
 import streamlit as st
 from PIL import Image
 
+# =========================
+# CONFIG
+# =========================
 st.set_page_config(page_title="ProTrade AI", page_icon="⚡", layout="wide")
 
+try:
 genai.configure(api_key=st.secrets["API_KEY"])
 model = genai.GenerativeModel("gemini-2.5-flash")
+except Exception as e:
+st.error(f"Errore configurazione Gemini/API_KEY: {e}")
+st.stop()
 
-CSS = """
-<style>
-.stApp{background:#03070d;color:white}.block-container{padding-top:1rem;max-width:1500px}.header{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border:1px solid #102333;border-radius:22px;background:linear-gradient(135deg,#061018,#08131f);margin-bottom:16px}.logo{font-size:34px;font-weight:900}.sublogo{color:#b7c0cc;font-size:15px}.live{color:#27ff75;border:1px solid #164f31;background:#07190f;padding:12px 22px;border-radius:18px;font-weight:800}.side-card,.main-card,.small-card{background:linear-gradient(145deg,#061018,#0b1420);border:1px solid #13293a;border-radius:18px;padding:18px;margin-bottom:14px;box-shadow:0 0 20px rgba(0,0,0,.35)}.chart-box{border:1px solid #123047;border-radius:20px;padding:12px;background:#040b12}.signal-box{border-radius:22px;padding:26px;text-align:center;margin-top:16px;margin-bottom:16px;font-weight:900}.signal-long{border:2px solid #00ff66;background:radial-gradient(circle,#063d1b,#061018);box-shadow:0 0 30px rgba(0,255,102,.35)}.signal-short{border:2px solid #ff3838;background:radial-gradient(circle,#3d0606,#061018);box-shadow:0 0 30px rgba(255,56,56,.35)}.signal-wait{border:2px solid #ffb020;background:radial-gradient(circle,#3a2805,#061018);box-shadow:0 0 30px rgba(255,176,32,.25)}.signal-no{border:2px solid #8b98a5;background:radial-gradient(circle,#242b33,#061018)}.signal-title{font-size:20px;color:#cfd8e3}.signal-main{font-size:70px;line-height:1}.long-text{color:#22ff72}.short-text{color:#ff4b4b}.wait-text{color:#ffbd45}.no-text{color:#aeb8c2}.metric-card{border-radius:18px;padding:18px;text-align:center;background:#07111b;border:1px solid #173044}.metric-label{color:#9aa7b5;font-size:14px;font-weight:700}.metric-value{font-size:30px;font-weight:900;margin-top:6px}.entry{border-color:#00c896}.sl{border-color:#ff3b3b}.tp{border-color:#00ff66}.rr{border-color:#f5b82e}.progress-bg{height:10px;border-radius:999px;background:#17212c;overflow:hidden;margin-top:10px}.progress-fill{height:10px;border-radius:999px;background:linear-gradient(90deg,#00ff66,#f5b82e)}.gauge{width:145px;height:145px;border-radius:50%;margin:auto;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at center,#07111b 55%,transparent 56%),conic-gradient(#22ff72 0deg,#22ff72 var(--deg),#1b2b36 var(--deg),#1b2b36 360deg)}.gauge-inner{text-align:center}.gauge-value{font-size:34px;font-weight:900}.gauge-label{color:#cbd5e1;font-size:13px}.check-row{display:flex;justify-content:space-between;border-bottom:1px solid #13293a;padding:8px 0}.ok{color:#22ff72;font-weight:800}.warn{color:#ffbd45;font-weight:800}.bad{color:#ff4b4b;font-weight:800}.stButton>button{background:linear-gradient(135deg,#f5b82e,#ff9f1c);color:#061018;border-radius:16px;height:3.4rem;font-weight:900;border:none}div[data-testid="stFileUploader"]{background:#07111b;border:1px solid #13293a;border-radius:18px;padding:10px}label,h1,h2,h3{color:white!important}@media(max-width:768px){.signal-main{font-size:48px}.logo{font-size:28px}.live{padding:8px 12px}}
-</style>
+# =========================
+# CSS
+# =========================
+st.markdown(
 """
-st.markdown(CSS, unsafe_allow_html=True)
+<style>
+:root {
+--bg: #02070d;
+--panel: #07111d;
+--panel2: #0b1624;
+--line: #14283a;
+--gold: #f5b82e;
+--green: #00ff7b;
+--red: #ff3b4e;
+--orange: #ffb020;
+--gray: #a7b0bc;
+--text: #f8fafc;
+--muted: #94a3b8;
+}
+.stApp {
+background:
+radial-gradient(circle at top right, rgba(245,184,46,0.16), transparent 28%),
+radial-gradient(circle at 20% 10%, rgba(0,255,123,0.10), transparent 24%),
+linear-gradient(180deg, #02070d 0%, #030914 55%, #010409 100%);
+color: var(--text);
+}
+.block-container {padding-top: 16px; padding-bottom: 30px; max-width: 1500px;}
+section[data-testid="stSidebar"] {
+background: linear-gradient(180deg, #040b13 0%, #070f1a 100%);
+border-right: 1px solid #13283a;
+}
+section[data-testid="stSidebar"] * {color: #eef2f7 !important;}
+.header {
+display:flex; justify-content:space-between; align-items:center; gap:16px;
+padding:20px 24px; border-radius:24px;
+background: linear-gradient(135deg, rgba(8,20,33,0.98), rgba(5,12,20,0.96));
+border:1px solid rgba(245,184,46,0.34);
+box-shadow:0 0 35px rgba(0,0,0,0.35), inset 0 0 30px rgba(245,184,46,0.04);
+margin-bottom:16px;
+}
+.logo {font-size:38px; font-weight:950; letter-spacing:-1px;}
+.sublogo {font-size:15px; color:#d7a82d; margin-top:-5px; font-weight:700;}
+.status-pill {padding:10px 16px; border-radius:999px; background:rgba(0,255,123,0.10); border:1px solid rgba(0,255,123,0.45); color:#00ff7b; font-weight:900; white-space:nowrap;}
+.panel {
+background: linear-gradient(145deg, rgba(7,17,29,0.95), rgba(10,22,36,0.88));
+border:1px solid rgba(20,40,58,0.95);
+border-radius:22px;
+padding:18px;
+box-shadow:0 18px 40px rgba(0,0,0,0.25);
+margin-bottom:16px;
+}
+.panel h3 {margin-top:0; margin-bottom:12px; color:#fff !important;}
+.chart-box {
+border:1px solid #14304a;
+border-radius:22px;
+background:#030914;
+padding:12px;
+box-shadow: inset 0 0 35px rgba(0,0,0,0.35);
+}
+.signal {
+min-height:210px;
+border-radius:28px;
+padding:28px;
+text-align:center;
+border:2px solid #273647;
+position:relative;
+overflow:hidden;
+box-shadow:0 0 45px rgba(0,0,0,0.35);
+}
+.signal::before {
+content:""; position:absolute; inset:-60px; opacity:.16; filter: blur(6px);
+background: conic-gradient(from 90deg, transparent, currentColor, transparent, currentColor, transparent);
+animation: spin 7s linear infinite;
+}
+@keyframes spin {to {transform: rotate(360deg);}}
+.signal > * {position:relative; z-index:2;}
+.sig-long {color:var(--green); border-color:var(--green); background: radial-gradient(circle, rgba(0,255,123,0.20), rgba(4,11,18,0.96) 62%);}
+.sig-short {color:var(--red); border-color:var(--red); background: radial-gradient(circle, rgba(255,59,78,0.22), rgba(4,11,18,0.96) 62%);}
+.sig-wait {color:var(--orange); border-color:var(--orange); background: radial-gradient(circle, rgba(255,176,32,0.20), rgba(4,11,18,0.96) 62%);}
+.sig-no {color:var(--gray); border-color:#7d8794; background: radial-gradient(circle, rgba(150,160,175,0.15), rgba(4,11,18,0.96) 62%);}
+.signal-label {font-size:13px; letter-spacing:2px; color:#cbd5e1; font-weight:900;}
+.signal-main {font-size:72px; line-height:1; font-weight:1000; margin:12px 0 10px;}
+.signal-sub {font-weight:800; color:#e2e8f0;}
+.progress-bg {height:12px; border-radius:999px; background:#172333; margin-top:16px; overflow:hidden;}
+.progress-fill {height:12px; border-radius:999px; background:linear-gradient(90deg, currentColor, #f5b82e);}
+.metric-grid {display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:14px;}
+.metric {
+background:linear-gradient(145deg, #07111d, #0c1827);
+border:1px solid #183249;
+border-radius:20px;
+padding:18px;
+min-height:110px;
+}
+.metric .label {font-size:12px; letter-spacing:1px; color:#93a4b8; font-weight:900;}
+.metric .value {font-size:28px; font-weight:1000; margin-top:10px; color:#fff; overflow-wrap:anywhere;}
+.entry {border-color:rgba(0,255,123,.55)} .entry .value{color:var(--green)}
+.stop {border-color:rgba(255,59,78,.55)} .stop .value{color:var(--red)}
+.tp {border-color:rgba(0,210,255,.45)} .tp .value{color:#7dd3fc}
+.rr {border-color:rgba(245,184,46,.65)} .rr .value{color:var(--gold)}
+.gauge-wrap {display:flex; align-items:center; justify-content:center; flex-direction:column; gap:12px;}
+.gauge {
+width:170px; height:170px; border-radius:50%;
+display:flex; align-items:center; justify-content:center;
+background: radial-gradient(circle at center,#07111d 56%, transparent 57%), conic-gradient(currentColor 0deg, currentColor var(--deg), #1d2b3a var(--deg), #1d2b3a 360deg);
+box-shadow: 0 0 28px rgba(0,0,0,.3);
+}
+.gauge .inner {text-align:center;}
+.gauge .num {font-size:38px; font-weight:1000; color:#fff;}
+.gauge .txt {font-size:12px; color:#94a3b8; font-weight:900; letter-spacing:1px;}
+.check {display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #13283a; padding:10px 0; font-weight:800;}
+.ok {color:var(--green)} .warn {color:var(--orange)} .bad {color:var(--red)}
+.reason {line-height:1.6; color:#e2e8f0; font-size:15px;}
+.small-title {font-size:13px; color:#94a3b8; font-weight:900; letter-spacing:1px;}
+.big-value {font-size:24px; font-weight:1000; margin-top:8px;}
+.stButton>button {height:3.4rem; border-radius:18px; border:0; background:linear-gradient(135deg,#f5b82e,#ff9f1c); color:#04101a; font-weight:1000; font-size:16px;}
+div[data-testid="stFileUploader"] {background:rgba(7,17,29,0.8); border:1px solid #14283a; border-radius:18px; padding:10px;}
+label, h1, h2, h3 {color:white !important;}
+@media (max-width: 900px) {.metric-grid {grid-template-columns:repeat(2, minmax(0,1fr));}.signal-main{font-size:48px}.header{flex-direction:column;align-items:flex-start}.gauge{width:140px;height:140px}}
+</style>
+""",
+unsafe_allow_html=True,
+)
+
+# =========================
+# UTILITIES
+# =========================
+def clamp_int(value: Any, default: int = 0, lo: int = 0, hi: int = 100) -> int:
+try:
+n = int(float(str(value).replace("%", "").strip()))
+return max(lo, min(hi, n))
+except Exception:
+return default
 
 
-def safe_json(text: str):
-    try:
-        cleaned = re.sub(r"```json|```", "", text).strip()
-        start = cleaned.find("{")
-        end = cleaned.rfind("}") + 1
-        return json.loads(cleaned[start:end])
-    except Exception:
-        return None
+def extract_json(text: str) -> Dict[str, Any] | None:
+if not text:
+return None
+cleaned = re.sub(r"```(?:json)?|```", "", text, flags=re.IGNORECASE).strip()
+start = cleaned.find("{")
+end = cleaned.rfind("}")
+if start == -1 or end == -1 or end <= start:
+return None
+try:
+return json.loads(cleaned[start : end + 1])
+except Exception:
+return None
 
 
-def signal_class(signal: str):
-    s = str(signal).upper()
-    if "LONG" in s or "BUY" in s:
-        return "signal-long", "long-text"
-    if "SHORT" in s or "SELL" in s:
-        return "signal-short", "short-text"
-    if "ASPETTA" in s or "WAIT" in s:
-        return "signal-wait", "wait-text"
-    return "signal-no", "no-text"
+def signal_style(signal: str) -> tuple[str, str]:
+s = (signal or "NO TRADE").upper()
+if "LONG" in s or "BUY" in s:
+return "sig-long", "LONG"
+if "SHORT" in s or "SELL" in s:
+return "sig-short", "SHORT"
+if "ASPETTA" in s or "WAIT" in s:
+return "sig-wait", "ASPETTA"
+return "sig-no", "NO TRADE"
 
 
-def check_class(value: str):
-    v = str(value).upper()
-    if v == "OK":
-        return "ok"
-    if v == "BAD":
-        return "bad"
-    return "warn"
+def check_class(value: str) -> str:
+v = (value or "WARN").upper()
+if v == "OK":
+return "ok"
+if v == "BAD":
+return "bad"
+return "warn"
 
 
-def build_prompt(symbol, timeframe, profile, account_size, risk_percent):
-    risk_dollar = account_size * risk_percent / 100
-    profile_rules = {
-        "Challenge": "Più operativo. Cerca opportunità buone anche se non perfette. RR minimo 1:2. Evita solo setup davvero sporchi.",
-        "Standard": "Bilanciato. Serve struttura chiara, RSI coerente e RR minimo 1:2.",
-        "Funded": "Conservativo. Proteggi il conto. Serve alta qualità, RR minimo 1:2.5, no ingressi tardivi.",
-        "Scalping": "Più rapido. Focus M1/M5, momentum e timing. Accetta setup veloci ma controlla RSI e spike.",
-    }
-    return f"""
-Sei ProTrade AI by Andreas De Marco. Analizza il grafico come un trader umano esperto.
+def fallback(raw: str) -> Dict[str, Any]:
+return {
+"signal": "NO TRADE",
+"signal_type": "CONSERVATIVO",
+"confidence": 0,
+"trade_score": 0,
+"entry": "N/A",
+"stop_loss": "N/A",
+"tp1": "N/A",
+"tp2": "N/A",
+"risk_reward": "N/A",
+"rsi_value": "N/A",
+"rsi_condition": "NON VISIBILE",
+"rsi_decision": "NEUTRO",
+"trend": "N/A",
+"ema_check": "N/A",
+"momentum": "N/A",
+"structure": "N/A",
+"volatility": "N/A",
+"liquidity": "N/A",
+"decision": "NON OPERARE",
+"reason": raw or "Risposta AI non leggibile.",
+"invalidation": "N/A",
+"checklist": {"Trend": "WARN", "EMA": "WARN", "RSI": "WARN", "Momentum": "WARN", "Struttura": "WARN", "RR": "WARN"},
+}
 
-DATI:
-Simbolo: {symbol}
-Timeframe: {timeframe}
-Profilo operativo: {profile}
-Regole profilo: {profile_rules[profile]}
-Account: {account_size}
-Rischio percentuale: {risk_percent}
-Rischio dollari: {risk_dollar:.2f}
+# =========================
+# PROMPT
+# =========================
+def build_prompt(symbol: str, timeframe: str, profile: str, account: int, risk: float) -> str:
+risk_usd = account * risk / 100
+rules = {
+"Challenge": "Profilo più operativo: accetta setup buoni anche se non perfetti. RR minimo 1:1.8/2.0. Non bloccare troppo i segnali.",
+"Standard": "Profilo bilanciato: richiede trend/struttura coerenti, RSI non contrario e RR minimo 1:2.",
+"Funded": "Profilo conservativo: proteggi il conto. Evita trade tardivi, RR minimo 1:2.5, no setup sporchi.",
+"Scalping": "Profilo veloce: focus momentum e timing su M1/M5, ma evita RSI estremo e spike.",
+}
+return f"""
+Sei ProTrade AI by Andreas De Marco. Analizzi screenshot di grafici trading.
+Rispondi SOLO in JSON valido. Nessun markdown, nessun testo fuori dal JSON.
 
-REGOLE:
-- Non essere troppo restrittivo.
-- LONG/SHORT se il setup è buono e RR accettabile.
-- ASPETTA se manca conferma o prezzo entrato male.
-- NO TRADE solo se mercato laterale/sporco, spike forti, livelli confusi o RR scarso.
-- Controlla SEMPRE RSI se visibile.
-- RSI sotto 30: evita nuovi SHORT salvo breakdown forte.
-- RSI sopra 70: evita nuovi LONG salvo breakout forte.
-- RSI 40-60: neutro.
-- Non comprare dopo salita troppo estesa. Non vendere dopo discesa troppo estesa.
+DATI OPERATIVI:
+- Simbolo: {symbol}
+- Timeframe: {timeframe}
+- Profilo AI: {profile}
+- Regola profilo: {rules[profile]}
+- Account: {account} USD
+- Rischio max: {risk}% = {risk_usd:.2f} USD
 
-Rispondi SOLO in JSON valido, senza markdown, con questo schema:
+RAGIONAMENTO UMANO OBBLIGATORIO:
+- Non essere troppo restrittivo: LONG/SHORT se il setup è buono e RR accettabile.
+- ASPETTA se direzione buona ma manca conferma o ingresso è tardivo.
+- NO TRADE solo se mercato laterale/sporco, livelli confusi, spike forti, RR scarso.
+- Controlla RSI se visibile.
+- Se RSI < 30 evita nuovi SHORT salvo breakdown fortissimo confermato.
+- Se RSI > 70 evita nuovi LONG salvo breakout fortissimo confermato.
+- RSI 40-60 = neutro, non bloccare da solo.
+- Se RSI è contrario o diverge, abbassa confidence.
+- Non vendere dopo discesa già estesa; non comprare dopo salita già estesa.
+- Se trade buono ma tardi, decisione ASPETTA e spiega pullback/conferma.
+
+JSON obbligatorio:
 {{
-  "signal":"LONG/SHORT/ASPETTA/NO TRADE",
-  "signal_type":"AGGRESSIVO/STANDARD/CONSERVATIVO",
-  "confidence":0,
-  "trade_score":0,
-  "entry":"prezzo o zona",
-  "stop_loss":"prezzo",
-  "take_profit":"prezzo",
-  "tp2":"prezzo",
-  "risk_reward":"1:2.0",
-  "trend_h1":"RIALZISTA/RIBASSISTA/NEUTRO/NON VISIBILE",
-  "trend_h4":"RIALZISTA/RIBASSISTA/NEUTRO/NON VISIBILE",
-  "ema_check":"SOPRA/SOTTO/NEUTRO/NON VISIBILE",
-  "rsi_value":"numero stimato o NON VISIBILE",
-  "rsi_condition":"IPERCOMPRATO/IPERVENDUTO/NEUTRO/DEBOLE/FORTE/NON VISIBILE",
-  "rsi_decision":"CONFERMA/BLOCCA/NEUTRO/ATTENDI",
-  "momentum":"POSITIVO/NEGATIVO/NEUTRO",
-  "structure":"BULLISH/BEARISH/LATERALE",
-  "volatility":"BASSA/MEDIA/ALTA",
-  "liquidity":"OK/ATTENZIONE/NON CHIARA",
-  "technical_checklist":{{"Trend":"OK/WARN/BAD","EMA":"OK/WARN/BAD","RSI":"OK/WARN/BAD","Momentum":"OK/WARN/BAD","Struttura":"OK/WARN/BAD","RR":"OK/WARN/BAD"}},
-  "reason":"spiegazione breve pratica",
-  "invalidation":"quando il setup non vale più",
-  "decision":"ENTRA/ASPETTA/NON OPERARE"
+"signal": "LONG oppure SHORT oppure ASPETTA oppure NO TRADE",
+"signal_type": "AGGRESSIVO oppure STANDARD oppure CONSERVATIVO",
+"confidence": 0,
+"trade_score": 0,
+"entry": "prezzo o zona",
+"stop_loss": "prezzo o zona",
+"tp1": "prezzo o zona",
+"tp2": "prezzo o zona",
+"risk_reward": "es. 1:2.3",
+"rsi_value": "numero stimato oppure NON VISIBILE",
+"rsi_condition": "IPERCOMPRATO/IPERVENDUTO/NEUTRO/FORTE/DEBOLE/NON VISIBILE",
+"rsi_decision": "CONFERMA/BLOCCA/NEUTRO/ATTENDI",
+"trend": "RIALZISTA/RIBASSISTA/NEUTRO",
+"ema_check": "FAVOREVOLE/CONTRARIA/NEUTRA/NON VISIBILE",
+"momentum": "POSITIVO/NEGATIVO/NEUTRO",
+"structure": "BULLISH/BEARISH/LATERALE",
+"volatility": "BASSA/MEDIA/ALTA",
+"liquidity": "OK/ATTENZIONE/NON CHIARA",
+"decision": "ENTRA/ASPETTA/NON OPERARE",
+"reason": "spiegazione pratica in massimo 3 frasi",
+"invalidation": "quando il setup non è più valido",
+"checklist": {{
+"Trend": "OK/WARN/BAD",
+"EMA": "OK/WARN/BAD",
+"RSI": "OK/WARN/BAD",
+"Momentum": "OK/WARN/BAD",
+"Struttura": "OK/WARN/BAD",
+"RR": "OK/WARN/BAD"
+}}
 }}
 """
 
 
-def analyze_chart(image_file, symbol, timeframe, profile, account_size, risk_percent):
-    img = Image.open(image_file)
-    prompt = build_prompt(symbol, timeframe, profile, account_size, risk_percent)
-    response = model.generate_content([prompt, img])
-    data = safe_json(response.text)
-    if data:
-        return data
-    return {
-        "signal": "NO TRADE",
-        "signal_type": "CONSERVATIVO",
-        "confidence": 0,
-        "trade_score": 0,
-        "entry": "N/A",
-        "stop_loss": "N/A",
-        "take_profit": "N/A",
-        "tp2": "N/A",
-        "risk_reward": "N/A",
-        "trend_h1": "N/A",
-        "trend_h4": "N/A",
-        "ema_check": "N/A",
-        "rsi_value": "N/A",
-        "rsi_condition": "N/A",
-        "rsi_decision": "N/A",
-        "momentum": "N/A",
-        "structure": "N/A",
-        "volatility": "N/A",
-        "liquidity": "N/A",
-        "technical_checklist": {},
-        "reason": response.text,
-        "invalidation": "N/A",
-        "decision": "NON OPERARE",
-    }
+def analyze_image(uploaded_file, symbol: str, timeframe: str, profile: str, account: int, risk: float) -> Dict[str, Any]:
+img = Image.open(uploaded_file)
+prompt = build_prompt(symbol, timeframe, profile, account, risk)
+response = model.generate_content([prompt, img])
+data = extract_json(getattr(response, "text", ""))
+return data if isinstance(data, dict) else fallback(getattr(response, "text", ""))
 
+# =========================
+# SIDEBAR
+# =========================
+with st.sidebar:
+st.markdown("## ⚙️ ProTrade AI")
+st.caption("by Andreas De Marco")
+profile = st.radio("Profilo operativo", ["Challenge", "Standard", "Funded", "Scalping"], index=1)
+st.markdown("---")
+symbol = st.selectbox("Asset", ["XAUUSD", "EURUSD", "GBPUSD", "NAS100", "US30", "BTCUSD"])
+timeframe = st.selectbox("Timeframe", ["M1", "M5", "M15", "M30", "H1", "H4"])
+st.markdown("---")
+account = st.number_input("Account USD", min_value=1000, value=25000, step=1000)
+risk = st.number_input("Rischio %", min_value=0.1, max_value=5.0, value=0.5, step=0.1)
+st.info(f"Rischio max: {account * risk / 100:.2f} USD")
+uploaded = st.file_uploader("Carica screenshot grafico", type=["jpg", "jpeg", "png"])
 
-def render_metric(label, value, extra_class=""):
-    st.markdown(
-        f"<div class='metric-card {extra_class}'><div class='metric-label'>{label}</div><div class='metric-value'>{value}</div></div>",
-        unsafe_allow_html=True,
-    )
-
-
+# =========================
+# HEADER
+# =========================
 st.markdown(
-    """
+"""
 <div class="header">
-  <div><div class="logo">⚡ ProTrade AI</div><div class="sublogo">by Andreas De Marco</div></div>
-  <div class="live">● LIVE ANALYSIS</div>
+<div>
+<div class="logo">⚡ ProTrade AI</div>
+<div class="sublogo">by Andreas De Marco · AI Trading Dashboard</div>
+</div>
+<div class="status-pill">● AI ONLINE</div>
 </div>
 """,
-    unsafe_allow_html=True,
+unsafe_allow_html=True,
 )
 
-left, center = st.columns([0.95, 3.05])
+# =========================
+# MAIN
+# =========================
+left, right = st.columns([1.45, 1.0], gap="large")
 
 with left:
-    st.markdown("<div class='side-card'><h3>⚙️ Modalità AI</h3>", unsafe_allow_html=True)
-    profile = st.radio("Profilo", ["Challenge", "Standard", "Funded", "Scalping"], index=1, label_visibility="collapsed")
-    st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("<div class='panel'><h3>📈 Chart Input</h3>", unsafe_allow_html=True)
+if uploaded:
+st.markdown("<div class='chart-box'>", unsafe_allow_html=True)
+st.image(uploaded, use_container_width=True)
+st.markdown("</div>", unsafe_allow_html=True)
+else:
+st.markdown("<div class='chart-box' style='height:360px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-weight:900;'>Carica screenshot con candele + RSI visibile</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='side-card'><h3>📊 Asset e timeframe</h3>", unsafe_allow_html=True)
-    symbol = st.selectbox("Asset", ["XAUUSD", "EURUSD", "GBPUSD", "NAS100", "US30", "BTCUSD"])
-    timeframe = st.selectbox("Timeframe", ["M1", "M5", "M15", "M30", "H1", "H4"])
-    st.markdown("</div>", unsafe_allow_html=True)
+if uploaded and st.button("⚡ ANALIZZA MERCATO", use_container_width=True):
+with st.spinner("ProTrade AI sta analizzando grafico, RSI, struttura e rischio..."):
+try:
+st.session_state.result = analyze_image(uploaded, symbol, timeframe, profile, account, risk)
+st.session_state.updated = datetime.now().strftime("%H:%M:%S")
+except Exception as e:
+st.error(f"Errore analisi: {e}")
 
-    st.markdown("<div class='side-card'><h3>🛡️ Risk Manager</h3>", unsafe_allow_html=True)
-    account_size = st.number_input("Account USD", min_value=1000, value=25000, step=1000)
-    risk_percent = st.number_input("Rischio %", min_value=0.1, max_value=5.0, value=0.5, step=0.1)
-    risk_dollar = account_size * risk_percent / 100
-    st.markdown(f"<b>Rischio max:</b> <span style='color:#f5b82e'>{risk_dollar:.2f} USD</span>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+with right:
+r = st.session_state.get("result")
+if not r:
+r = {
+"signal": "WAIT", "signal_type": profile.upper(), "confidence": 0, "trade_score": 0,
+"entry": "--", "stop_loss": "--", "tp1": "--", "tp2": "--", "risk_reward": "--",
+"rsi_value": "--", "rsi_condition": "--", "rsi_decision": "--", "trend": "--", "ema_check": "--",
+"momentum": "--", "structure": "--", "volatility": "--", "liquidity": "--", "decision": "--",
+"reason": "Carica un grafico e premi Analizza Mercato.", "invalidation": "--",
+"checklist": {"Trend":"WARN", "EMA":"WARN", "RSI":"WARN", "Momentum":"WARN", "Struttura":"WARN", "RR":"WARN"}
+}
 
-    uploaded = st.file_uploader("📤 Carica grafico", type=["jpg", "jpeg", "png"])
+sig_class, sig_text = signal_style(str(r.get("signal", "NO TRADE")))
+conf = clamp_int(r.get("confidence", 0))
+score = clamp_int(r.get("trade_score", 0))
 
-with center:
-    if uploaded:
-        st.markdown("<div class='chart-box'>", unsafe_allow_html=True)
-        st.image(uploaded, use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if uploaded and st.button("⚡ ANALIZZA MERCATO"):
-        with st.spinner("ProTrade AI sta ragionando come un trader umano..."):
-            st.session_state["last_result"] = analyze_chart(uploaded, symbol, timeframe, profile, account_size, risk_percent)
-            st.session_state["last_update"] = datetime.now().strftime("%H:%M:%S")
-
-    if "last_result" in st.session_state:
-        r = st.session_state["last_result"]
-        signal = r.get("signal", "NO TRADE")
-        box_class, text_class = signal_class(signal)
-        confidence = int(float(r.get("confidence", 0) or 0))
-        score = int(float(r.get("trade_score", 0) or 0))
-
-        st.markdown(
-            f"""
-<div class="signal-box {box_class}">
-  <div class="signal-title">SEGNALE AI</div>
-  <div class="signal-main {text_class}">{signal}</div>
-  <div>CONFIDENCE {confidence}% · TRADE SCORE {score}/100 · {r.get('signal_type','')}</div>
-  <div class="progress-bg"><div class="progress-fill" style="width:{confidence}%"></div></div>
+st.markdown(
+f"""
+<div class="signal {sig_class}">
+<div class="signal-label">SEGNALE AI</div>
+<div class="signal-main">{sig_text}</div>
+<div class="signal-sub">{r.get('signal_type','')} · Confidence {conf}% · Trade Score {score}/100</div>
+<div class="progress-bg"><div class="progress-fill" style="width:{conf}%"></div></div>
 </div>
 """,
-            unsafe_allow_html=True,
-        )
+unsafe_allow_html=True,
+)
 
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            render_metric("ENTRY", r.get("entry", "N/A"), "entry")
-        with c2:
-            render_metric("STOP LOSS", r.get("stop_loss", "N/A"), "sl")
-        with c3:
-            render_metric("TAKE PROFIT", r.get("take_profit", "N/A"), "tp")
-        with c4:
-            render_metric("RISK / REWARD", r.get("risk_reward", "N/A"), "rr")
-
-        a, b, c = st.columns([1.2, 0.85, 1.15])
-        with a:
-            st.markdown("<div class='main-card'><h3>⚠️ Analisi tecnica</h3>", unsafe_allow_html=True)
-            for k, v in r.get("technical_checklist", {}).items():
-                cls = check_class(v)
-                st.markdown(f"<div class='check-row'><span>{k}</span><span class='{cls}'>{v}</span></div>", unsafe_allow_html=True)
-            st.markdown(f"<div class='check-row'><span>Trend H1</span><span class='ok'>{r.get('trend_h1','N/A')}</span></div>", unsafe_allow_html=True)
-            st.markdown(f"<div class='check-row'><span>EMA</span><span class='ok'>{r.get('ema_check','N/A')}</span></div>", unsafe_allow_html=True)
-            st.markdown(f"<div class='check-row'><span>Struttura</span><span class='ok'>{r.get('structure','N/A')}</span></div></div>", unsafe_allow_html=True)
-
-        with b:
-            rsi_raw = str(r.get("rsi_value", "50")).replace(",", ".")
-            try:
-                rsi = float(re.findall(r"\d+\.?\d*", rsi_raw)[0])
-            except Exception:
-                rsi = 50.0
-            deg = max(0, min(360, rsi * 3.6))
-            st.markdown(
-                f"""
-<div class='main-card'>
-  <h3>RSI Check</h3>
-  <div class="gauge" style="--deg:{deg}deg;"><div class="gauge-inner"><div class="gauge-value">{r.get('rsi_value','N/A')}</div><div class="gauge-label">{r.get('rsi_condition','')}</div></div></div>
-  <br><b>Decisione:</b> {r.get('rsi_decision','N/A')}
+st.markdown(
+f"""
+<div class="metric-grid">
+<div class="metric entry"><div class="label">ENTRY</div><div class="value">{r.get('entry','--')}</div></div>
+<div class="metric stop"><div class="label">STOP LOSS</div><div class="value">{r.get('stop_loss','--')}</div></div>
+<div class="metric tp"><div class="label">TP1 / TP2</div><div class="value">{r.get('tp1','--')}<br><span style='font-size:18px;color:#94a3b8'>{r.get('tp2','--')}</span></div></div>
+<div class="metric rr"><div class="label">RISK/REWARD</div><div class="value">{r.get('risk_reward','--')}</div></div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
+unsafe_allow_html=True,
+)
 
-        with c:
-            st.markdown(
-                f"""
-<div class='main-card'>
-  <h3>🧠 Spiegazione AI</h3>
-  <p>{r.get('reason','')}</p><hr>
-  <b>Invalidazione:</b><br>{r.get('invalidation','')}<br><br>
-  <b>Decisione:</b> <span class="{text_class}">{r.get('decision','')}</span>
+st.markdown("---")
+a, b, c = st.columns([1, 1, 1.2], gap="large")
+
+with a:
+st.markdown("<div class='panel'><h3>🎯 Confidence</h3>", unsafe_allow_html=True)
+deg = conf * 3.6
+st.markdown(f"<div class='gauge-wrap'><div class='gauge {sig_class}' style='--deg:{deg}deg;'><div class='inner'><div class='num'>{conf}%</div><div class='txt'>CONFIDENCE</div></div></div><div class='big-value'>{r.get('decision','--')}</div></div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
+
+with b:
+st.markdown("<div class='panel'><h3>RSI Check</h3>", unsafe_allow_html=True)
+raw_rsi = str(r.get("rsi_value", "50"))
+nums = re.findall(r"\d+\.?\d*", raw_rsi.replace(",", "."))
+rsi_num = float(nums[0]) if nums else 50.0
+rsi_num = max(0, min(100, rsi_num))
+rsi_deg = rsi_num * 3.6
+rsi_color_class = "sig-wait" if rsi_num > 70 or rsi_num < 30 else "sig-long"
+st.markdown(f"<div class='gauge-wrap'><div class='gauge {rsi_color_class}' style='--deg:{rsi_deg}deg;'><div class='inner'><div class='num'>{r.get('rsi_value','--')}</div><div class='txt'>RSI</div></div></div><div class='big-value'>{r.get('rsi_condition','--')}</div><div style='color:#94a3b8;font-weight:800'>{r.get('rsi_decision','--')}</div></div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
+
+with c:
+st.markdown("<div class='panel'><h3>✅ AI Checklist</h3>", unsafe_allow_html=True)
+for k, v in (r.get("checklist") or {}).items():
+cls = check_class(str(v))
+st.markdown(f"<div class='check'><span>{k}</span><span class='{cls}'>{v}</span></div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
+
+x1, x2, x3, x4, x5 = st.columns(5)
+small_items = [
+("Trend", r.get("trend", "--")),
+("EMA", r.get("ema_check", "--")),
+("Momentum", r.get("momentum", "--")),
+("Volatilità", r.get("volatility", "--")),
+("Update", st.session_state.get("updated", "--")),
+]
+for col, (title, value) in zip([x1, x2, x3, x4, x5], small_items):
+with col:
+st.markdown(f"<div class='panel'><div class='small-title'>{title}</div><div class='big-value'>{value}</div></div>", unsafe_allow_html=True)
+
+st.markdown(
+f"""
+<div class="panel">
+<h3>🧠 AI Thinking</h3>
+<div class="reason">{r.get('reason','')}</div>
+<br>
+<div class="small-title">INVALIDAZIONE</div>
+<div class="reason">{r.get('invalidation','')}</div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
+unsafe_allow_html=True,
+)
 
-        d1, d2, d3, d4, d5 = st.columns(5)
-        with d1:
-            st.markdown(f"<div class='small-card'><b>Probabilità</b><br><h2>{confidence}%</h2></div>", unsafe_allow_html=True)
-        with d2:
-            st.markdown(f"<div class='small-card'><b>Momentum</b><br><h2>{r.get('momentum','N/A')}</h2></div>", unsafe_allow_html=True)
-        with d3:
-            st.markdown(f"<div class='small-card'><b>Volatilità</b><br><h2>{r.get('volatility','N/A')}</h2></div>", unsafe_allow_html=True)
-        with d4:
-            st.markdown(f"<div class='small-card'><b>Liquidità</b><br><h2>{r.get('liquidity','N/A')}</h2></div>", unsafe_allow_html=True)
-        with d5:
-            st.markdown(f"<div class='small-card'><b>Update</b><br><h2>{st.session_state.get('last_update','')}</h2></div>", unsafe_allow_html=True)
+st.caption("⚠️ ProTrade AI è uno strumento di supporto. Non è consulenza finanziaria. Gestisci sempre il rischio.")
 
-st.caption("⚠️ ProTrade AI non fornisce consulenza finanziaria. Usa sempre giudizio e gestione del rischio.")
