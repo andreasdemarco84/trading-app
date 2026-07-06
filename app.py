@@ -307,68 +307,78 @@ def build_prompt(symbol, timeframe, account_size, risk_percent, prop_mode, ai_pr
 
     if ai_profile == "Challenge":
         profile_rule = """
-Profilo Challenge:
-- Obiettivo primario: trovare opportunità operative valide.
-- Accetta setup buoni anche se non perfetti.
-- Se trend e struttura sono chiari, puoi dare LONG o SHORT.
-- Usa ASPETTA solo se manca una conferma precisa.
-- Usa NO TRADE solo se grafico sporco, laterale o rischio/rendimento scarso.
+PROFILO CHALLENGE:
+- Obiettivo: trovare opportunità operative valide per superare una challenge.
+- Sii più operativo, ma non casuale.
+- Puoi accettare setup buoni anche se non perfetti.
+- Soglia minima: setup leggibile + RR accettabile.
+- Preferisci ENTRA SUBITO o ORDINE PENDENTE se esiste una direzione probabile.
+- Usa NON OPERARE solo se il mercato è davvero sporco, laterale o senza RR.
 """
+
     elif ai_profile == "Funded":
         profile_rule = """
-Profilo Funded:
-- Obiettivo primario: proteggere il conto.
-- Sii più selettivo, ma non bloccato.
-- Dai LONG o SHORT solo se trend, struttura, RSI e RR sono abbastanza coerenti.
-- Evita ingressi tardivi e trade forzati.
-- Usa ASPETTA se serve conferma.
+PROFILO FUNDED:
+- Obiettivo: proteggere il conto funded.
+- Sii più selettivo.
+- Dai ENTRA SUBITO solo se timing, struttura, RSI e RR sono coerenti.
+- Se il setup è buono ma non perfetto, preferisci ORDINE PENDENTE.
+- Usa NON OPERARE se il rischio è alto, il movimento è tardivo o il grafico è confuso.
 """
+
     elif ai_profile == "Scalping":
         profile_rule = """
-Profilo Scalping:
-- Obiettivo primario: operatività rapida su M1/M5.
-- Puoi dare LONG o SHORT se ci sono momentum, timing e struttura leggibile.
-- Non inseguire il prezzo se è già partito.
-- Evita trade solo se movimento esaurito, spike o rumore eccessivo.
+PROFILO SCALPING:
+- Obiettivo: operatività rapida su M1/M5.
+- Cerca momentum, micro-breakout, pullback veloci e livelli chiari.
+- Puoi usare ENTRA SUBITO se il timing è immediato.
+- Usa ORDINE PENDENTE se serve breakout o pullback.
+- Non inseguire il prezzo se il movimento è già esploso.
 """
+
     else:
         profile_rule = """
-Profilo Standard:
-- Approccio bilanciato.
-- Dai LONG o SHORT se il setup è tecnicamente valido.
-- Usa ASPETTA se la direzione è buona ma manca timing.
-- Usa NO TRADE se mercato confuso o RR insufficiente.
+PROFILO STANDARD:
+- Obiettivo: equilibrio tra opportunità e prudenza.
+- Dai ENTRA SUBITO se il setup è valido ora.
+- Dai ORDINE PENDENTE se il setup è valido ma serve un prezzo migliore o conferma.
+- Dai NON OPERARE solo se il setup è debole, confuso o il RR è scarso.
 """
 
     focus_lines = []
+
     if show_ema:
-        focus_lines.append("- Commenta la posizione del prezzo rispetto a EMA/media mobile se visibile.")
+        focus_lines.append("- Controlla EMA/media mobile se visibile: prezzo sopra, sotto, vicino o lontano.")
     if show_rsi:
-        focus_lines.append("- Commenta obbligatoriamente il valore RSI se visibile.")
+        focus_lines.append("- Controlla RSI se visibile: ipercomprato, ipervenduto, neutro, divergenze.")
     if show_levels:
-        focus_lines.append("- Commenta supporti e resistenze visibili.")
+        focus_lines.append("- Controlla supporti, resistenze, massimi/minimi, liquidità.")
     if show_volume:
-        focus_lines.append("- Commenta i volumi se visibili nello screenshot.")
+        focus_lines.append("- Controlla i volumi se visibili.")
 
     focus_block = "\n".join(focus_lines) if focus_lines else "- Analizza tutti gli elementi visibili nel grafico."
 
     mtf_block = ""
     if multi_tf:
         mtf_block = """
-Considera anche l'ottica multi-timeframe:
-- timeframe alto = direzione
-- timeframe medio = setup
-- timeframe basso = timing
-Se dallo screenshot non puoi vedere tutto, dillo chiaramente.
+OTTICA MULTI-TIMEFRAME:
+- Timeframe alto = direzione principale.
+- Timeframe medio = struttura/setup.
+- Timeframe basso = timing di ingresso.
+- Se lo screenshot mostra un solo timeframe, analizza quello e specifica cosa manca.
 """
 
     return f"""
 Sei ProTrade AI, assistente professionale di analisi trading creato per Andreas De Marco.
 
-Analizza il grafico caricato come un trader umano esperto.
-Non dare segnali ciechi.
-Non inventare dati non visibili.
-Devi ragionare bene, non sparare a caso.
+Devi ragionare come un trader umano esperto.
+Non devi sparare segnali a caso.
+Non devi essere bloccato in automatico.
+Non devi inventare dati non visibili.
+Devi sempre scegliere una delle 3 decisioni operative:
+1. ENTRA SUBITO
+2. ORDINE PENDENTE
+3. NON OPERARE
 
 DATI OPERATIVI:
 Strumento: {symbol}
@@ -387,27 +397,161 @@ RR minimo richiesto: {rr_minimo}
 FOCUS RICHIESTI:
 {focus_block}
 
-REGOLE IMPORTANTI:
-- LONG/SHORT se il setup ha una logica tecnica concreta.
-- ASPETTA se manca conferma, candela, pullback o timing.
-- NO TRADE solo se il mercato è laterale, sporco, confuso, con spike o RR insufficiente.
-- Non usare ASPETTA sempre.
-- Non usare LONG/SHORT senza motivazione tecnica.
-- Controlla RSI: se RSI è già molto basso, attenzione agli SHORT tardivi; se RSI è molto alto, attenzione ai LONG tardivi.
-- Se RSI è 40-60, è neutro.
-- Controlla media mobile/EMA se visibile.
-- Controlla se il prezzo è troppo lontano dalla media.
-- Controlla se l'ingresso è tardivo.
-- Controlla il rapporto rischio/rendimento.
-- Se scegli ASPETTA, devi dire esattamente cosa aspettare.
+==================================================
+STRATEGIA OPERATIVA PROTRADE AI
+==================================================
+
+La strategia si basa su 5 controlli:
+
+1. TREND / STRUTTURA
+- Guarda se il mercato fa massimi e minimi crescenti o decrescenti.
+- Se la struttura è rialzista, cerca LONG.
+- Se la struttura è ribassista, cerca SHORT.
+- Se è laterale e sporca, NON OPERARE.
+
+2. EMA / MEDIA MOBILE
+- Prezzo sopra EMA/media: bias più favorevole al LONG.
+- Prezzo sotto EMA/media: bias più favorevole allo SHORT.
+- Prezzo vicino alla EMA/media: possibile zona di rimbalzo o rottura.
+- Prezzo troppo lontano dalla EMA/media: attenzione, ingresso tardivo.
+
+3. RSI
+- RSI sopra 70: evita LONG market tardivi. Meglio BUY LIMIT su pullback o NON OPERARE.
+- RSI sotto 30: evita SHORT market tardivi. Meglio SELL LIMIT su pullback o NON OPERARE.
+- RSI 40-60: neutro, non blocca il trade.
+- RSI che rompe sopra 50: conferma potenziale LONG.
+- RSI che rompe sotto 50: conferma potenziale SHORT.
+- Divergenza contro il trade: abbassa confidence.
+
+4. ENTRY / TIMING
+Devi decidere il tipo di ordine:
+
+MARKET BUY:
+- LONG valido subito.
+- Prezzo in zona buona.
+- Momentum favorevole.
+- SL tecnico chiaro.
+- RR accettabile.
+
+MARKET SELL:
+- SHORT valido subito.
+- Prezzo in zona buona.
+- Momentum favorevole.
+- SL tecnico chiaro.
+- RR accettabile.
+
+BUY LIMIT:
+- Bias LONG ma prezzo troppo alto.
+- Meglio comprare su pullback verso supporto, EMA/media o zona di domanda.
+
+SELL LIMIT:
+- Bias SHORT ma prezzo troppo basso.
+- Meglio vendere su pullback verso resistenza, EMA/media o zona di offerta.
+
+BUY STOP:
+- Bias LONG ma serve breakout sopra massimo/resistenza.
+- Entra solo sopra conferma di forza.
+
+SELL STOP:
+- Bias SHORT ma serve breakdown sotto minimo/supporto.
+- Entra solo sotto conferma di debolezza.
+
+NESSUN ORDINE:
+- Nessuna direzione chiara.
+- Grafico sporco/laterale.
+- RR insufficiente.
+- Prezzi non leggibili.
+
+5. RISK / REWARD
+- Se il RR è buono e il setup è coerente, puoi dare segnale.
+- Se il RR è scarso, NON OPERARE.
+- Se serve conferma, usa ORDINE PENDENTE, non ASPETTA.
+
+==================================================
+REGOLA DELLE 3 POSSIBILITÀ
+==================================================
+
+Devi scegliere sempre una sola decisione:
+
+1. ENTRA SUBITO:
+- Setup valido al prezzo attuale.
+- Tipo ordine deve essere MARKET BUY o MARKET SELL.
+- Devi dare Entry numerica, Stop Loss numerico, TP1 numerico, TP2 numerico.
+
+2. ORDINE PENDENTE:
+- Setup valido ma serve prezzo migliore o conferma.
+- Tipo ordine deve essere BUY LIMIT, SELL LIMIT, BUY STOP o SELL STOP.
+- Devi dare Entry numerica, Stop Loss numerico, TP1 numerico, TP2 numerico.
+
+3. NON OPERARE:
+- Setup non valido.
+- Tipo ordine deve essere NESSUN ORDINE.
+- Puoi usare N/A nei livelli solo se non esiste nessun trade sensato.
+
+Non usare più ASPETTA.
+Non scrivere ASPETTA in nessuna sezione.
+Se prima avresti scritto ASPETTA, ora devi trasformarlo in ORDINE PENDENTE se esiste un livello tecnico.
+
+==================================================
+REGOLA NUMERI OBBLIGATORI
+==================================================
+
+- Se il verdetto è LONG o SHORT, devi fornire numeri precisi per Entry, Stop Loss, TP1 e TP2.
+- Se scegli ORDINE PENDENTE, devi fornire il numero preciso del livello pendente.
+- Se scegli ENTRA SUBITO, Entry deve essere il prezzo attuale stimato dal grafico.
+- Non usare N/A per Entry, Stop Loss, TP1, TP2 se il prezzo sul grafico è leggibile.
+- Se il prezzo è poco leggibile, fai una stima prudente basata sulla scala del grafico.
+- Meglio una stima ragionata che N/A.
+- N/A è ammesso solo se il grafico è tagliato, sfocato o senza scala prezzi.
+- I numeri devono essere coerenti con lo strumento analizzato.
+- Per XAUUSD usa prezzi realistici tipo 4145.20, 4138.50, 4162.00.
+- Per EURUSD usa prezzi realistici tipo 1.08450, 1.08120, 1.09000.
+- Per NAS100 usa livelli realistici dell'indice.
+
+==================================================
+SCALA DECISIONALE
+==================================================
+
+Prima assegna mentalmente un punteggio tecnico da 0 a 100.
+
+Score 80-100:
+- Setup forte.
+- ENTRA SUBITO oppure ORDINE PENDENTE.
+
+Score 70-79:
+- Setup buono.
+- Se il timing è valido: ENTRA SUBITO.
+- Se serve conferma: ORDINE PENDENTE.
+
+Score 60-69:
+- Setup interessante ma incompleto.
+- Usa ORDINE PENDENTE se c'è livello tecnico chiaro.
+- Usa NON OPERARE solo se non c'è livello leggibile.
+
+Score sotto 60:
+- Setup debole.
+- NON OPERARE.
+
+Adattamento profilo:
+- Challenge: puoi dare segnale operativo già da 65-68 se RR e struttura sono accettabili.
+- Scalping: puoi dare segnale operativo già da 63-65 se timing e momentum sono chiari.
+- Standard: soglia operativa normale 70.
+- Funded: soglia più alta 75-78.
+
+==================================================
+FORMATO RISPOSTA
+==================================================
 
 Rispondi ESATTAMENTE con questo formato:
 
 VERDETTO:
-LONG / SHORT / ASPETTA / NO TRADE
+LONG / SHORT / NO TRADE
 
 TIPO SEGNALE:
 AGGRESSIVO / STANDARD / CONSERVATIVO
+
+TIPO ORDINE:
+MARKET BUY / MARKET SELL / BUY LIMIT / SELL LIMIT / BUY STOP / SELL STOP / NESSUN ORDINE
 
 TRADE SCORE:
 0-100
@@ -428,35 +572,35 @@ Conferma o blocca il trade: ...
 Nota: ...
 
 TRADE SETUP:
-Entry: ...
-Stop Loss: ...
-TP1: ...
-TP2: ...
-TP3: ...
-Risk/Reward: ...
+Entry: scrivi tipo ordine + prezzo numerico. Esempi: MARKET BUY 4145.20, MARKET SELL 4141.80, BUY LIMIT 4138.50, SELL LIMIT 4155.00, BUY STOP 4152.00, SELL STOP 4132.00.
+Stop Loss: numero preciso.
+TP1: numero preciso.
+TP2: numero preciso.
+TP3: numero preciso oppure opzionale.
+Risk/Reward: rapporto stimato, esempio 1:1.8, 1:2.2, 1:3.0.
 
 RISK MANAGER:
-Rischio massimo: ...
-Size consigliata: ...
-Breakeven: ...
-Parziale: ...
+Rischio massimo: {risk_dollar:.2f} USD
+Size consigliata: indica "da calcolare in base alla distanza SL" se non puoi calcolare i lotti.
+Breakeven: indica quando portare a BE.
+Parziale: indica dove prendere parziale.
 
 AI CHECKLIST:
-Trend: ...
-EMA: ...
-RSI: ...
-Momentum: ...
-Struttura: ...
-Risk/Reward: ...
+Trend: OK / NEUTRO / CONTRO
+EMA: OK / NEUTRO / CONTRO / NON VISIBILE
+RSI: OK / NEUTRO / CONTRO / NON VISIBILE
+Momentum: OK / NEUTRO / CONTRO
+Struttura: OK / NEUTRO / CONTRO
+Risk/Reward: OK / NEUTRO / SCARSO
 
 MOTIVAZIONE:
-Spiegazione pratica in 3-5 frasi.
+Spiegazione pratica in 3-5 frasi. Devi spiegare perché hai scelto ENTRA SUBITO, ORDINE PENDENTE o NON OPERARE.
 
 INVALIDAZIONE:
 Quando il setup non è più valido.
 
 DECISIONE OPERATIVA:
-ENTRA / ASPETTA / NON OPERARE
+ENTRA SUBITO / ORDINE PENDENTE / NON OPERARE
 """
 
 # =========================
@@ -464,13 +608,13 @@ ENTRA / ASPETTA / NON OPERARE
 # =========================
 
 SECTION_HEADERS = [
-    "VERDETTO", "TIPO SEGNALE", "TRADE SCORE", "CONFIDENCE", "MARKET BIAS",
+    "VERDETTO", "TIPO SEGNALE", "TIPO ORDINE", "TRADE SCORE", "CONFIDENCE", "MARKET BIAS",
     "RSI CHECK", "TRADE SETUP", "RISK MANAGER", "AI CHECKLIST",
     "MOTIVAZIONE", "INVALIDAZIONE", "DECISIONE OPERATIVA"
 ]
 
 SIMPLE_SECTIONS = [
-    "VERDETTO", "TIPO SEGNALE", "TRADE SCORE", "CONFIDENCE", "DECISIONE OPERATIVA"
+    "VERDETTO", "TIPO SEGNALE", "TIPO ORDINE", "TRADE SCORE", "CONFIDENCE", "DECISIONE OPERATIVA"
 ]
 
 FREETEXT_SECTIONS = ["MOTIVAZIONE", "INVALIDAZIONE"]
@@ -506,7 +650,7 @@ def parse_ai_response(text):
         kv = {}
         content = blocks.get(h, "")
         for line in content.splitlines():
-            m = re.match(r"^\s*([^:]{2,40}):\s*(.+)$", line)
+            m = re.match(r"^\\s*([^:]{2,40}):\\s*(.+)$", line)
             if m:
                 key = m.group(1).strip().lower()
                 val = m.group(2).strip()
@@ -518,7 +662,7 @@ def parse_ai_response(text):
 
 def get_rsi_value(rsi_dict):
     raw = rsi_dict.get("valore stimato", "")
-    m = re.search(r"(\d+(\.\d+)?)", raw)
+    m = re.search(r"(\\d+(\\.\\d+)?)", raw)
     if m:
         try:
             return float(m.group(1))
@@ -753,6 +897,7 @@ if st.session_state.last_result:
 
         verdetto = parsed.get("VERDETTO", "N/D") or "N/D"
         tipo_segnale = parsed.get("TIPO SEGNALE", "N/D") or "N/D"
+        tipo_ordine = parsed.get("TIPO ORDINE", "N/D") or "N/D"
         trade_score_raw = parsed.get("TRADE SCORE", "0") or "0"
         confidence_raw = parsed.get("CONFIDENCE", "0%") or "0%"
 
@@ -766,10 +911,10 @@ if st.session_state.last_result:
 
         css_class, accent_color, icon = verdict_style(verdetto)
 
-        score_num_match = re.search(r"(\d+)", str(trade_score_raw))
+        score_num_match = re.search(r"(\\d+)", str(trade_score_raw))
         score_num = int(score_num_match.group(1)) if score_num_match else 0
 
-        conf_num_match = re.search(r"(\d+)", str(confidence_raw))
+        conf_num_match = re.search(r"(\\d+)", str(confidence_raw))
         conf_num = int(conf_num_match.group(1)) if conf_num_match else 0
 
         st.markdown(f"""
@@ -778,7 +923,7 @@ if st.session_state.last_result:
                 <div style="font-size:44px;">{icon}</div>
                 <div>
                     <div class="signal-verdict" style="color:{accent_color};">{verdetto}</div>
-                    <div class="signal-confidence">CONFIDENCE {conf_num}%</div>
+                    <div class="signal-confidence">CONFIDENCE {conf_num}% · {tipo_ordine}</div>
                 </div>
             </div>
             <div style="text-align:right;">
