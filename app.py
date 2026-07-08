@@ -315,267 +315,66 @@ def get_session():
 def build_prompt(symbol, timeframe, account_size, risk_percent, prop_mode, profile,
                  rr_minimo, multi_tf, show_ema, show_rsi, show_levels, show_volume):
 
-    risk_dollar = account_size * risk_percent / 100
-
-    if profile == "Challenge":
-        profile_rule = """
-PROFILO CHALLENGE:
-Puoi accettare setup B con ordine pendente.
-A+ può essere segnale attivo.
-C è NO TRADE.
-"""
-    elif profile == "Funded":
-        profile_rule = """
-PROFILO FUNDED:
-Massima selezione.
-A+ può essere segnale attivo.
-B solo ordine pendente molto pulito.
-C è NO TRADE.
-"""
-    elif profile == "Scalping":
-        profile_rule = """
-PROFILO SCALPING:
-Serve timing chiaro.
-A+ può essere segnale attivo.
-B solo pendente.
-Non inseguire candele già esplose.
-"""
-    else:
-        profile_rule = """
-PROFILO STANDARD:
-A+ può essere segnale attivo.
-B è setup in formazione con ordine pendente.
-C è NO TRADE.
-"""
-
-    focus = []
-    if show_ema:
-        focus.append("EMA/media: filtro trend e zona dinamica.")
-    if show_rsi:
-        focus.append("RSI: sopra/sotto 50 aiuta, estremi evitano entrate market tardive.")
-    if show_levels:
-        focus.append("Livelli: supporti, resistenze, massimi/minimi, retest.")
-    if show_volume:
-        focus.append("Volumi: se visibili, usali solo come conferma.")
-
-    focus_block = " ".join(focus) if focus else "Analizza il grafico visibile."
-
-    mtf_block = ""
-    if multi_tf:
-        mtf_block = """
-Se vedi solo un timeframe, lavora su quello.
-Se timeframe è H1/H4, evita scalping.
-Se timeframe è M1/M5/M15, dai più peso al timing.
-"""
-
     return f"""
-Sei ProTrade AI.
-
-Devi applicare SEMPRE la stessa strategia.
-Non devi cambiare ragionamento.
-Non devi inventare.
-Non devi cercare segnali per forza.
+Sei ProTrade AI, un esperto in Market Structure e Price Action.
+Il tuo obiettivo è identificare setup ad ALTA PROBABILITÀ per il trading profittevole.
 
 DATI:
-Strumento: {symbol}
-Timeframe: {timeframe}
-Account: {account_size} USD
-Rischio massimo: {risk_percent}%
-Rischio massimo dollari: {risk_dollar:.2f} USD
-Prop firm: {prop_mode}
-Profilo: {profile}
-RR minimo: {rr_minimo}
-
-{profile_rule}
-
-{mtf_block}
-
-FOCUS:
-{focus_block}
+Strumento: {symbol} | TF: {timeframe} | Profilo: {profile}
+Account: {account_size} USD | Rischio: {risk_percent}%
+RR Minimo: {rr_minimo} | Prop Firm: {prop_mode}
 
 ==================================================
-PROTRADE SETUP GRADER STRATEGY
+STRATEGIA OPERATIVA (SEGUI SCRUPOLOSAMENTE)
 ==================================================
 
-L'app deve classificare il grafico in 3 stati:
+1. MARKET STRUCTURE (TREND)
+- Identifica il trend primario sul TF analizzato (Massimi/Minimi crescenti o decrescenti).
+- Se la struttura è rialzista, cerca solo setup LONG.
+- Se la struttura è ribassista, cerca solo setup SHORT.
+- Se la struttura non è chiara o laterale (range sporco), rispondi NO TRADE.
 
-1. SEGNALE ATTIVO
-Il setup è già valido ora.
-Può essere MARKET BUY, MARKET SELL, BUY STOP o SELL STOP.
+2. ZONE DI INTERESSE (SUPPLY/DEMAND)
+- Identifica zone dove il prezzo ha lasciato in passato una reazione forte.
+- Il prezzo deve tornare in una zona non ancora "consumata".
+- Se il prezzo è lontano da supporti/resistenze chiave, non forzare l'entrata.
 
-2. SETUP IN FORMAZIONE
-Il bias esiste, ma non bisogna entrare market.
-Serve ordine pendente su retest, pullback o rottura.
-Questo NON è nessun setup.
-Questo è un piano operativo condizionato.
+3. CONFERMA (TRIGGER)
+- Non entrare solo perché il prezzo tocca un livello.
+- Richiedi una conferma a candela: Pinbar (Rifiuto), Engulfing (Forza), o una rottura e retest di struttura (MSB).
+- Se non vedi una conferma chiara, classifica come "SETUP IN FORMAZIONE" (Ordine Pendente).
 
-3. NO TRADE
-Non c'è nessun setup utile.
-Mercato sporco, range senza livelli, prezzo in mezzo, RR scarso.
-
-==================================================
-SETUP CONSENTITI
-==================================================
-
-SETUP 1: PULLBACK IN TREND
-
-LONG:
-trend long, prezzo torna su EMA/supporto, RSI scarica ma non crolla, reazione rialzista.
-
-SHORT:
-trend short, prezzo torna su EMA/resistenza, RSI rimbalza ma non diventa forte, reazione ribassista.
-
-SETUP 2: BREAKOUT + RETEST
-
-LONG:
-rottura resistenza, retest, tenuta della zona, ripartenza long.
-
-SHORT:
-rottura supporto, retest, zona respinge, ripartenza short.
-
-SETUP 3: BREAKOUT / BREAKDOWN IN FORMAZIONE
-
-BREAKOUT LONG:
-candela forte sopra resistenza, ma prezzo già esteso o manca retest.
-Non entrare market se è tardi.
-Dai BUY LIMIT su retest oppure BUY STOP sopra continuazione.
-
-BREAKDOWN SHORT:
-candela forte sotto supporto, ma prezzo già esteso o RSI già basso.
-Non entrare market se è tardi.
-Dai SELL LIMIT su retest oppure SELL STOP sotto continuazione.
-
-IMPORTANTE:
-Se vedi breakdown forte, NON devi scrivere NESSUN SETUP.
-Devi scrivere:
-VERDETTO=SHORT
-STATO=SETUP IN FORMAZIONE
-SETUP_TYPE=BREAKDOWN_IN_FORMAZIONE
-TIPO_ORDINE=SELL LIMIT oppure SELL STOP
-
-Se vedi breakout forte, NON devi scrivere NESSUN SETUP.
-Devi scrivere:
-VERDETTO=LONG
-STATO=SETUP IN FORMAZIONE
-SETUP_TYPE=BREAKOUT_IN_FORMAZIONE
-TIPO_ORDINE=BUY LIMIT oppure BUY STOP
+4. GESTIONE RISCHIO
+- Se lo Stop Loss è troppo lontano (> 2x TP1), considera il setup scadente (C) e rispondi NO TRADE.
 
 ==================================================
-RANGE / CONSOLIDAMENTO
+FORMATO RISPOSTA (KEY=VALUE)
 ==================================================
+Rispondi SOLO con righe KEY=VALUE. Non usare markdown.
 
-Se prezzo è in range ma i livelli sono chiari:
-VERDETTO=NO TRADE
-BIAS=NEUTRO
-STATO=SETUP IN FORMAZIONE
-SETUP_QUALITY=B
-SETUP_TYPE=RANGE_TRIGGER
-TIPO_ORDINE=NESSUN ORDINE
-POSSIBILE_LONG=sopra resistenza con chiusura
-POSSIBILE_SHORT=sotto supporto con chiusura
-
-Se prezzo è in range sporco senza livelli:
-VERDETTO=NO TRADE
-STATO=NO TRADE
-SETUP_QUALITY=C
-SETUP_TYPE=NESSUN SETUP
-
-==================================================
-QUALITÀ SETUP
-==================================================
-
-A+:
-trend chiaro, setup chiaro, prezzo in zona buona, momentum coerente, RR valido.
-Può essere SEGNALE ATTIVO.
-
-B:
-bias valido o setup in formazione, ma manca retest/conferma oppure prezzo è esteso.
-Deve essere SETUP IN FORMAZIONE.
-Deve usare ordine pendente, non market.
-
-C:
-trend confuso, prezzo in mezzo, range sporco, livelli non chiari.
-NO TRADE.
-
-==================================================
-TIPI ORDINE
-==================================================
-
-MARKET BUY:
-solo A+ long, prezzo già in zona buona.
-
-MARKET SELL:
-solo A+ short, prezzo già in zona buona.
-
-BUY LIMIT:
-trend long o breakout long, vuoi comprare su pullback/retest.
-
-SELL LIMIT:
-trend short o breakdown short, vuoi vendere su pullback/retest.
-
-BUY STOP:
-serve rottura sopra massimo/resistenza.
-
-SELL STOP:
-serve rottura sotto minimo/supporto.
-
-NESSUN ORDINE:
-no setup attivo, oppure range con livelli da monitorare.
-
-==================================================
-FILTRI
-==================================================
-
-Se RSI è sopra 70:
-evita market buy tardivo, preferisci buy limit o no trade.
-
-Se RSI è sotto 30:
-evita market sell tardivo, preferisci sell limit o sell stop di continuazione.
-
-Se il prezzo è lontano dalla EMA dopo candela forte:
-non entrare market.
-usa setup in formazione con ordine pendente.
-
-Se manca entry, stop loss, invalidazione, TP1, TP2, TP3:
-se è LONG/SHORT devi comunque stimare livelli dal grafico.
-se non puoi stimare, allora NO TRADE.
-
-==================================================
-FORMATO RISPOSTA
-==================================================
-
-Rispondi SOLO con righe KEY=VALUE.
-Non usare JSON.
-Non usare markdown.
-Ogni campo una sola riga.
-Non andare a capo dentro ANALISI.
-Non usare il simbolo = dentro i valori.
-
-Usa ESATTAMENTE questi campi:
-
-VERDETTO=LONG oppure SHORT oppure NO TRADE
-BIAS=LONG oppure SHORT oppure NEUTRO
-STATO=SEGNALE ATTIVO oppure SETUP IN FORMAZIONE oppure NO TRADE
-SETUP_QUALITY=A+ oppure B oppure C
-SETUP_TYPE=PULLBACK oppure BREAKOUT_RETEST oppure BREAKOUT_IN_FORMAZIONE oppure BREAKDOWN_IN_FORMAZIONE oppure RANGE_TRIGGER oppure NESSUN SETUP
-TIPO_ORDINE=MARKET BUY oppure MARKET SELL oppure BUY LIMIT oppure SELL LIMIT oppure BUY STOP oppure SELL STOP oppure NESSUN ORDINE
-ENTRY=prezzo o N/D
-STOP_LOSS=prezzo o N/D
-INVALIDAZIONE=prezzo o N/D
-TP1=prezzo o N/D
-TP2=prezzo o N/D
-TP3=prezzo o N/D
-RISK_REWARD=rapporto o N/D
-POSSIBILE_LONG=livello trigger long o N/D
-POSSIBILE_SHORT=livello trigger short o N/D
-CONFIDENCE=numero da 0 a 100
-TRADE_SCORE=numero da 0 a 100
-DECISIONE=ENTRA SUBITO oppure ORDINE PENDENTE oppure NON OPERARE
-PARZIALE=regola o N/D
-BREAKEVEN=regola o N/D
-TRAILING=regola o N/D
-ANALISI=frase breve massimo 240 caratteri
-MOTIVO_NO_TRADE=frase breve o vuoto
+VERDETTO=LONG o SHORT o NO TRADE
+BIAS=LONG o SHORT o NEUTRO
+STATO=SEGNALE ATTIVO o SETUP IN FORMAZIONE o NO TRADE
+SETUP_QUALITY=A+ (Trend+Zona+Conferma) o B (Trend+Zona, no conferma) o C (Sporco)
+SETUP_TYPE=PULLBACK_ZONA o BREAK_RETEST o RANGE_BREAK
+TIPO_ORDINE=MARKET BUY/SELL (A+) o BUY/SELL LIMIT (B) o NESSUN ORDINE
+ENTRY=prezzo
+STOP_LOSS=prezzo
+INVALIDAZIONE=prezzo
+TP1=prezzo
+TP2=prezzo
+TP3=prezzo
+RISK_REWARD=valore (es 1:2.5)
+POSSIBILE_LONG=prezzo
+POSSIBILE_SHORT=prezzo
+CONFIDENCE=0-100
+TRADE_SCORE=0-100
+DECISIONE=ENTRA SUBITO o ORDINE PENDENTE o NON OPERARE
+PARZIALE=regola
+BREAKEVEN=regola
+TRAILING=regola
+ANALISI=Sii spietato. Spiega la struttura di mercato e perché il trade è valido.
+MOTIVO_NO_TRADE=Se NO TRADE, spiega chiaramente (es. "Prezzo lontano da zona", "Struttura incerta").
 """
 
 
@@ -608,11 +407,6 @@ Non usare JSON.
 Non usare markdown.
 Ogni campo una sola riga.
 Se non sei sicuro, metti NO TRADE.
-Se vedi breakdown o breakout forte ma entry market è tardiva, usa SETUP IN FORMAZIONE.
-
-Strumento: {symbol}
-Timeframe: {timeframe}
-Profilo: {profile}
 
 Risposta precedente:
 {previous_text}
@@ -640,7 +434,7 @@ DECISIONE=NON OPERARE
 PARZIALE=N/D
 BREAKEVEN=N/D
 TRAILING=N/D
-ANALISI=Risposta precedente non valida. Segnale annullato per sicurezza.
+ANALISI=Formato non valido, segnale annullato per sicurezza.
 MOTIVO_NO_TRADE=Formato non valido o setup non chiaro.
 """
 
