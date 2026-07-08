@@ -1,7 +1,6 @@
 import streamlit as st
 from PIL import Image
 import google.generativeai as genai
-import json
 import re
 from datetime import datetime
 
@@ -146,35 +145,80 @@ h1,h2,h3,h4,label {
 """, unsafe_allow_html=True)
 
 # =========================
-# HELPERS
+# DEFAULT RESULT
 # =========================
 
-def clean_json_text(text):
-    text = str(text).strip()
-    text = text.replace("```json", "").replace("```", "").strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        text = text[start:end + 1]
-    return text
+def default_result():
+    return {
+        "VERDETTO": "NO TRADE",
+        "BIAS": "NEUTRO",
+        "SETUP_QUALITY": "C",
+        "SETUP_TYPE": "NESSUN SETUP",
+        "TIPO_ORDINE": "NESSUN ORDINE",
+        "ENTRY": "N/D",
+        "STOP_LOSS": "N/D",
+        "INVALIDAZIONE": "N/D",
+        "TP1": "N/D",
+        "TP2": "N/D",
+        "TP3": "N/D",
+        "RISK_REWARD": "N/D",
+        "CONFIDENCE": "0",
+        "TRADE_SCORE": "0",
+        "DECISIONE": "NON OPERARE",
+        "PARZIALE": "N/D",
+        "BREAKEVEN": "N/D",
+        "TRAILING": "N/D",
+        "ANALISI": "Nessun setup valido.",
+        "MOTIVO_NO_TRADE": "Setup non abbastanza chiaro."
+    }
+
+# =========================
+# UTILS
+# =========================
+
+def parse_key_value_response(text):
+    result = default_result()
+
+    for raw_line in str(text).splitlines():
+        line = raw_line.strip()
+
+        if not line:
+            continue
+
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip().upper()
+        value = value.strip()
+
+        if key in result:
+            result[key] = value
+
+    result["VERDETTO"] = result["VERDETTO"].upper()
+    result["BIAS"] = result["BIAS"].upper()
+    result["SETUP_QUALITY"] = result["SETUP_QUALITY"].upper()
+    result["SETUP_TYPE"] = result["SETUP_TYPE"].upper()
+    result["TIPO_ORDINE"] = result["TIPO_ORDINE"].upper()
+    result["DECISIONE"] = result["DECISIONE"].upper()
+
+    return result
 
 
-def safe_json_loads(text):
-    return json.loads(clean_json_text(text))
+def has_number(value):
+    return re.search(r"\d", str(value)) is not None
 
 
 def extract_number(value, default=0):
     match = re.search(r"(\d+(?:\.\d+)?)", str(value))
+
     if match:
         try:
             return float(match.group(1))
         except Exception:
             return default
+
     return default
-
-
-def has_number(value):
-    return re.search(r"\d", str(value)) is not None
 
 
 def is_missing(value):
@@ -182,153 +226,116 @@ def is_missing(value):
     return value in ["", "N/D", "N/A", "-", "NONE", "NULL"]
 
 
-def default_result():
-    return {
-        "verdetto": "NO TRADE",
-        "bias": "NEUTRO",
-        "setup_quality": "C",
-        "market_regime": "CHOPPY / SPORCO",
-        "setup_type": "NESSUN SETUP",
-        "tipo_ordine": "NESSUN ORDINE",
-        "trade_score": 0,
-        "confidence": 0,
-        "decisione_operativa": "NON OPERARE",
-        "trade_setup": {
-            "entry": "N/D",
-            "stop_loss": "N/D",
-            "invalidation_level": "N/D",
-            "tp1": "N/D",
-            "tp2": "N/D",
-            "tp3": "N/D",
-            "risk_reward": "N/D"
-        },
-        "gestione": {
-            "parziale": "N/D",
-            "breakeven": "N/D",
-            "trailing": "N/D"
-        },
-        "checklist": {
-            "trend": "CONTRO",
-            "struttura": "CONTRO",
-            "zona": "CONTRO",
-            "momentum": "CONTRO",
-            "rsi": "NEUTRO",
-            "ema": "NEUTRO",
-            "risk_reward": "SCARSO"
-        },
-        "analisi": "Nessun setup valido.",
-        "motivo_no_trade": "Setup non abbastanza chiaro."
-    }
-
-
-def normalize_result(data):
-    base = default_result()
-
-    if not isinstance(data, dict):
-        return base
-
-    for key in base:
-        if key in data:
-            base[key] = data[key]
-
-    if not isinstance(base.get("trade_setup"), dict):
-        base["trade_setup"] = default_result()["trade_setup"]
-
-    if not isinstance(base.get("gestione"), dict):
-        base["gestione"] = default_result()["gestione"]
-
-    if not isinstance(base.get("checklist"), dict):
-        base["checklist"] = default_result()["checklist"]
-
-    base["verdetto"] = str(base.get("verdetto", "NO TRADE")).upper()
-    base["bias"] = str(base.get("bias", "NEUTRO")).upper()
-    base["setup_quality"] = str(base.get("setup_quality", "C")).upper()
-    base["tipo_ordine"] = str(base.get("tipo_ordine", "NESSUN ORDINE")).upper()
-    base["decisione_operativa"] = str(base.get("decisione_operativa", "NON OPERARE")).upper()
-
-    return base
-
-
 def valid_trade(data):
-    verdict = str(data.get("verdetto", "")).upper()
-    setup = data.get("trade_setup", {})
+    verdict = data.get("VERDETTO", "").upper()
 
     if verdict not in ["LONG", "SHORT"]:
         return True
 
-    required = [
-        setup.get("entry", ""),
-        setup.get("stop_loss", ""),
-        setup.get("invalidation_level", ""),
-        setup.get("tp1", ""),
-        setup.get("tp2", ""),
-        setup.get("tp3", ""),
-        setup.get("risk_reward", "")
+    required_fields = [
+        "ENTRY",
+        "STOP_LOSS",
+        "INVALIDAZIONE",
+        "TP1",
+        "TP2",
+        "TP3",
+        "RISK_REWARD"
     ]
 
-    for item in required:
-        if is_missing(item):
+    for field in required_fields:
+        if is_missing(data.get(field, "")):
             return False
 
-    for item in required[:6]:
-        if not has_number(item):
+    for field in ["ENTRY", "STOP_LOSS", "INVALIDAZIONE", "TP1", "TP2", "TP3"]:
+        if not has_number(data.get(field, "")):
             return False
 
-    score = int(extract_number(data.get("trade_score", 0), 0))
-    confidence = int(extract_number(data.get("confidence", 0), 0))
-    quality = str(data.get("setup_quality", "C")).upper()
+    confidence = int(extract_number(data.get("CONFIDENCE", "0"), 0))
+    score = int(extract_number(data.get("TRADE_SCORE", "0"), 0))
+    quality = data.get("SETUP_QUALITY", "C").upper()
+    order_type = data.get("TIPO_ORDINE", "").upper()
 
     if quality == "C":
         return False
 
-    if score < 72:
+    if confidence < 60:
         return False
 
-    if confidence < 65:
+    if score < 65:
+        return False
+
+    if quality == "B" and order_type in ["MARKET BUY", "MARKET SELL"]:
         return False
 
     return True
 
 
-def force_no_trade(data, reason):
-    data = normalize_result(data)
-    data["verdetto"] = "NO TRADE"
-    data["bias"] = "NEUTRO"
-    data["setup_quality"] = "C"
-    data["tipo_ordine"] = "NESSUN ORDINE"
-    data["decisione_operativa"] = "NON OPERARE"
-    data["trade_score"] = 0
-    data["confidence"] = 0
-    data["trade_setup"] = default_result()["trade_setup"]
-    data["gestione"] = default_result()["gestione"]
-    data["motivo_no_trade"] = reason
-    data["analisi"] = reason
+def force_no_trade(reason):
+    data = default_result()
+    data["ANALISI"] = reason
+    data["MOTIVO_NO_TRADE"] = reason
     return data
 
 
-def result_to_json(data):
-    return json.dumps(data, ensure_ascii=False)
+def result_to_text(data):
+    order = [
+        "VERDETTO",
+        "BIAS",
+        "SETUP_QUALITY",
+        "SETUP_TYPE",
+        "TIPO_ORDINE",
+        "ENTRY",
+        "STOP_LOSS",
+        "INVALIDAZIONE",
+        "TP1",
+        "TP2",
+        "TP3",
+        "RISK_REWARD",
+        "CONFIDENCE",
+        "TRADE_SCORE",
+        "DECISIONE",
+        "PARZIALE",
+        "BREAKEVEN",
+        "TRAILING",
+        "ANALISI",
+        "MOTIVO_NO_TRADE"
+    ]
+
+    lines = []
+
+    for key in order:
+        lines.append(f"{key}={data.get(key, 'N/D')}")
+
+    return "\n".join(lines)
 
 
 def signal_style(verdict):
     verdict = str(verdict).upper()
+
     if verdict == "LONG":
         return "long", "#00E676", "🐂"
+
     if verdict == "SHORT":
         return "short", "#FF5252", "🐻"
+
     return "no", "#BDBDBD", "⛔"
 
 
 def get_session():
     hour = datetime.now().hour
+
     if 0 <= hour < 7:
         return "ASIA"
+
     if 7 <= hour < 13:
         return "LONDRA"
+
     if 13 <= hour < 16:
         return "LONDRA/NY"
+
     if 16 <= hour < 22:
         return "NEW YORK"
+
     return "CHIUSA"
 
 # =========================
@@ -343,77 +350,72 @@ def build_prompt(symbol, timeframe, account_size, risk_percent, prop_mode, profi
     if profile == "Challenge":
         profile_rule = """
 PROFILO CHALLENGE:
-- Puoi accettare setup B solo se RR è almeno 1:1.8 e livello tecnico è chiaro.
-- Setup A+ può essere ENTRA SUBITO o ORDINE PENDENTE.
-- Setup B deve essere solo ORDINE PENDENTE.
-- Setup C deve essere NO TRADE.
+Puoi accettare setup B solo con ordine pendente.
+Setup A+ può essere market o pendente.
+Setup C è sempre NO TRADE.
 """
     elif profile == "Funded":
         profile_rule = """
 PROFILO FUNDED:
-- Massima selettività.
-- Solo setup A+ può essere segnale.
-- Setup B solo se ordine pendente molto pulito.
-- RR minimo ideale 1:2.
-- Se c'è dubbio, NO TRADE.
+Massima selezione.
+Solo setup A+ può essere segnale.
+Setup B solo ordine pendente molto pulito.
+Se hai dubbio, NO TRADE.
 """
     elif profile == "Scalping":
         profile_rule = """
 PROFILO SCALPING:
-- Solo setup rapidi ma puliti.
-- Devi vedere momentum chiaro, livello vicino e stop corto.
-- Niente market se la candela è già esplosa.
-- Se non c'è timing pulito, NO TRADE o ordine pendente.
+Serve timing chiaro.
+Non inseguire candele già esplose.
+Setup B solo ordine pendente.
+Setup C NO TRADE.
 """
     else:
         profile_rule = """
 PROFILO STANDARD:
-- Serve setup tecnico pulito.
-- Setup A+ può essere segnale.
-- Setup B solo ordine pendente.
-- Setup C no trade.
+Setup A+ può essere segnale.
+Setup B solo ordine pendente.
+Setup C NO TRADE.
 """
 
     focus = []
+
     if show_ema:
-        focus.append("- EMA/media visibile: usala solo come filtro, non come segnale singolo.")
+        focus.append("EMA/media visibile: usala come filtro trend e zona dinamica.")
     if show_rsi:
-        focus.append("- RSI visibile: sopra/sotto 50 aiuta, estremi evitano entrate tardive.")
+        focus.append("RSI visibile: sopra/sotto 50 aiuta, estremi evitano entrate tardive.")
     if show_levels:
-        focus.append("- Livelli: supporti, resistenze, massimi/minimi, zone di liquidità.")
+        focus.append("Livelli visibili: supporti, resistenze, massimi/minimi, retest.")
     if show_volume:
-        focus.append("- Volumi: usali solo se chiaramente visibili.")
+        focus.append("Volumi visibili: usali solo se chiari.")
 
-    focus_block = "\n".join(focus) if focus else "- Analizza il grafico visibile."
+    focus_block = " ".join(focus) if focus else "Analizza il grafico visibile."
 
-    mtf_block = """
-MULTI TIMEFRAME:
-- Se nel grafico è visibile solo un timeframe, lavora su quello.
-- Se il timeframe è H1/H4, evita entry troppo precise da scalping.
-- Se il timeframe è M1/M5/M15, dai più peso al timing.
-""" if multi_tf else ""
+    mtf_block = ""
+    if multi_tf:
+        mtf_block = """
+Se vedi solo un timeframe, lavora su quello.
+Se timeframe è H1/H4, evita segnali da scalping.
+Se timeframe è M1/M5/M15, dai più peso al timing.
+"""
 
     return f"""
-Sei ProTrade AI, motore di analisi grafica per trading.
+Sei ProTrade AI.
 
-OBIETTIVO:
-Quando l'utente carica un grafico, devi leggerlo e applicare una strategia fissa.
-Se dai LONG deve essere un LONG tecnicamente difendibile.
-Se dai SHORT deve essere uno SHORT tecnicamente difendibile.
-Se non c'è setup pulito, devi dire NO TRADE.
-
-NON devi cercare segnali per forza.
-Meglio NO TRADE che un segnale debole.
+Devi applicare SEMPRE la stessa strategia.
+Non devi cambiare ragionamento.
+Non devi inventare.
+Non devi cercare segnali per forza.
 
 DATI:
 Strumento: {symbol}
 Timeframe: {timeframe}
 Account: {account_size} USD
 Rischio massimo: {risk_percent}%
-Rischio massimo in dollari: {risk_dollar:.2f} USD
+Rischio massimo dollari: {risk_dollar:.2f} USD
 Prop firm: {prop_mode}
 Profilo: {profile}
-RR minimo richiesto: {rr_minimo}
+RR minimo: {rr_minimo}
 
 {profile_rule}
 
@@ -423,233 +425,199 @@ FOCUS:
 {focus_block}
 
 ==================================================
-PROTRADE CORE SIGNAL STRATEGY
+PROTRADE FIXED STRATEGY
 ==================================================
 
-Puoi dare segnale solo se riconosci UNO di questi setup:
+La strategia è sempre questa.
 
-1. PULLBACK IN TREND
-LONG:
+FASE 1: TREND
+Trend LONG valido solo se:
+- massimi e minimi crescenti
+- prezzo sopra EMA/media oppure sopra supporto chiave
 - struttura rialzista leggibile
-- prezzo sopra o vicino a EMA/supporto
-- pullback terminato o in zona favorevole
-- RSI non contrario
-- spazio fino a TP1/TP2
+
+Trend SHORT valido solo se:
+- massimi e minimi decrescenti
+- prezzo sotto EMA/media oppure sotto resistenza chiave
+- struttura ribassista leggibile
+
+Se il trend non è chiaro:
+NO TRADE.
+
+FASE 2: CERCA SOLO 2 SETUP
+
+SETUP 1: PULLBACK IN TREND
+LONG:
+- trend long
+- prezzo torna su EMA/supporto
+- RSI scarica ma non crolla
+- prezzo reagisce o riparte
 - stop tecnico chiaro
+- target realistici
 
 SHORT:
-- struttura ribassista leggibile
-- prezzo sotto o vicino a EMA/resistenza
-- pullback terminato o in zona favorevole
-- RSI non contrario
-- spazio fino a TP1/TP2
+- trend short
+- prezzo torna su EMA/resistenza
+- RSI rimbalza ma non diventa forte
+- prezzo respinge e riparte giù
 - stop tecnico chiaro
+- target realistici
 
-2. BREAKOUT + RETEST
+SETUP 2: BREAKOUT + RETEST
 LONG:
-- rottura resistenza/massimo
+- rottura resistenza o massimo
 - retest della zona rotta
 - zona tiene
-- momentum torna positivo
-- RR valido
+- ripartenza long
 
 SHORT:
-- rottura supporto/minimo
+- rottura supporto o minimo
 - retest della zona rotta
-- zona tiene da resistenza
-- momentum torna negativo
-- RR valido
+- zona respinge
+- ripartenza short
 
-3. BREAKOUT FORTE
-Da usare meno.
-Serve:
-- candela di forza
-- rottura livello evidente
-- spazio libero fino al target
-- RSI non estremo contro
-- RR valido
+Se non vedi PULLBACK IN TREND o BREAKOUT + RETEST:
+NO TRADE.
 
-Se non riconosci uno di questi 3 setup, devi mettere NO TRADE.
+FASE 3: QUALITÀ SETUP
 
-==================================================
-FILTRI OBBLIGATORI
-==================================================
-
-Prima di dare LONG o SHORT devi controllare:
-
-1. Trend:
-- massimi/minimi crescenti per LONG
-- massimi/minimi decrescenti per SHORT
-- se trend confuso = NO TRADE
-
-2. Struttura:
-- il prezzo deve avere una struttura leggibile
-- se è range sporco o candele confuse = NO TRADE
-
-3. Zona:
-- il prezzo deve essere vicino a una zona tecnica sensata
-- se è in mezzo al nulla = NO TRADE
-
-4. Momentum:
-- deve esserci spinta o reazione coerente
-- se c'è indecisione = NO TRADE
-
-5. RSI:
-- RSI 40-60 è neutro, non basta per entrare
-- RSI sopra 70 evita long market tardivo
-- RSI sotto 30 evita short market tardivo
-- RSI contro il trade abbassa qualità
-
-6. EMA:
-- sopra EMA aiuta long solo se struttura conferma
-- sotto EMA aiuta short solo se struttura conferma
-- lontano da EMA = rischio entrata tardiva
-
-7. Risk Reward:
-- RR sotto 1:1.5 = NO TRADE
-- RR 1:1.5/1:1.8 = solo Challenge/Scalping e solo setup pulito
-- RR 1:2 o superiore = valido
-
-==================================================
-REGOLE DECISIONE
-==================================================
-
-SETUP A+:
-- almeno 5 conferme su 7
+A+:
 - trend chiaro
-- zona buona
+- setup chiaro
+- prezzo in zona buona
 - momentum coerente
 - RR valido
 - livelli numerici leggibili
-Decisione: LONG/SHORT consentito.
+Decisione possibile: ENTRA SUBITO o ORDINE PENDENTE.
 
-SETUP B:
-- direzione probabile ma timing non perfetto
-- serve pullback o breakout
-Decisione: LONG/SHORT consentito solo con ordine pendente.
+B:
+- direzione probabile
+- serve ancora pullback o conferma
+- livelli leggibili
+Decisione possibile: solo ORDINE PENDENTE.
 
-SETUP C:
-- meno di 5 conferme
+C:
 - trend confuso
 - prezzo in mezzo
+- range sporco
+- setup non chiaro
 - RR scarso
-- livelli poco chiari
 Decisione: NO TRADE.
 
-REGOLA DURA:
-- Se non sei convinto almeno 65%, NO TRADE.
-- Se trade_score sotto 72, NO TRADE.
-- Se confidence sotto 65, NO TRADE.
-- Se non puoi dare entry, stop, invalidazione, TP1, TP2, TP3 numerici, NO TRADE.
-- Non usare ASPETTA.
-
-==================================================
-TIPI ORDINE
-==================================================
+FASE 4: TIPO ORDINE
 
 MARKET BUY:
-- solo A+
-- long valido subito
-- prezzo non lontano dalla zona
-- stop e target chiari
+solo setup A+ long, prezzo già in zona buona.
 
 MARKET SELL:
-- solo A+
-- short valido subito
-- prezzo non lontano dalla zona
-- stop e target chiari
+solo setup A+ short, prezzo già in zona buona.
 
 BUY LIMIT:
-- trend long
-- vuoi comprare su pullback
+trend long, vuoi comprare su pullback.
 
 SELL LIMIT:
-- trend short
-- vuoi vendere su pullback
+trend short, vuoi vendere su pullback.
 
 BUY STOP:
-- serve rottura sopra resistenza/massimo
+serve rottura sopra resistenza/massimo.
 
 SELL STOP:
-- serve rottura sotto supporto/minimo
+serve rottura sotto supporto/minimo.
 
 NESSUN ORDINE:
-- no setup valido
+nessun setup valido.
+
+FASE 5: FILTRI DURI
+
+Se confidence sotto 60:
+NO TRADE.
+
+Se trade score sotto 65:
+NO TRADE.
+
+Se setup quality è C:
+NO TRADE.
+
+Se non puoi dare entry, stop loss, invalidazione, TP1, TP2, TP3 numerici:
+NO TRADE.
+
+Se setup quality è B:
+non usare MARKET BUY o MARKET SELL.
+Usa solo ordine pendente.
 
 ==================================================
-GESTIONE
+GESTIONE TRADE
 ==================================================
 
-Se dai LONG o SHORT:
-- 1 stop loss reale
-- 1 invalidation_level
-- TP1 prudente
-- TP2 principale
-- TP3 estensione
-- parziale a TP1
-- breakeven dopo TP1
-- trailing dopo TP2
+Se dai LONG o SHORT devi dare:
+- Entry numerica
+- Stop Loss numerico
+- Invalidazione numerica
+- TP1 numerico
+- TP2 numerico
+- TP3 numerico
+- Risk Reward
+- Parziale
+- Breakeven
+- Trailing
+
+TP1 = target prudente.
+TP2 = target principale.
+TP3 = estensione.
+
+A TP1 suggerisci parziale 40% o 50%.
+Dopo TP1 suggerisci breakeven.
+Dopo TP2 suggerisci trailing.
 
 ==================================================
-OUTPUT
+FORMATO RISPOSTA
 ==================================================
 
-Rispondi SOLO con JSON valido.
+Rispondi SOLO con righe KEY=VALUE.
+Non usare JSON.
 Non usare markdown.
-Non scrivere testo fuori dal JSON.
+Non usare punti elenco.
+Non aggiungere testo fuori dalle righe.
+Ogni campo deve stare su una sola riga.
+Non andare a capo dentro ANALISI.
+Non usare il simbolo = dentro i valori.
 
-Schema obbligatorio:
+Usa ESATTAMENTE questi campi:
 
-{{
-  "verdetto": "LONG oppure SHORT oppure NO TRADE",
-  "bias": "LONG oppure SHORT oppure NEUTRO",
-  "setup_quality": "A+ oppure B oppure C",
-  "market_regime": "PULLBACK IN TREND oppure BREAKOUT + RETEST oppure BREAKOUT FORTE oppure RANGE oppure CHOPPY / SPORCO oppure REVERSAL",
-  "setup_type": "PULLBACK oppure BREAKOUT_RETEST oppure BREAKOUT oppure NESSUN SETUP",
-  "tipo_ordine": "MARKET BUY oppure MARKET SELL oppure BUY LIMIT oppure SELL LIMIT oppure BUY STOP oppure SELL STOP oppure NESSUN ORDINE",
-  "trade_score": 0,
-  "confidence": 0,
-  "decisione_operativa": "ENTRA SUBITO oppure ORDINE PENDENTE oppure NON OPERARE",
-  "trade_setup": {{
-    "entry": "",
-    "stop_loss": "",
-    "invalidation_level": "",
-    "tp1": "",
-    "tp2": "",
-    "tp3": "",
-    "risk_reward": ""
-  }},
-  "gestione": {{
-    "parziale": "",
-    "breakeven": "",
-    "trailing": ""
-  }},
-  "checklist": {{
-    "trend": "OK / NEUTRO / CONTRO",
-    "struttura": "OK / NEUTRO / CONTRO",
-    "zona": "OK / NEUTRO / CONTRO",
-    "momentum": "OK / NEUTRO / CONTRO",
-    "rsi": "OK / NEUTRO / CONTRO / NON VISIBILE",
-    "ema": "OK / NEUTRO / CONTRO / NON VISIBILE",
-    "risk_reward": "OK / NEUTRO / SCARSO"
-  }},
-  "analisi": "",
-  "motivo_no_trade": ""
-}}
+VERDETTO=LONG oppure SHORT oppure NO TRADE
+BIAS=LONG oppure SHORT oppure NEUTRO
+SETUP_QUALITY=A+ oppure B oppure C
+SETUP_TYPE=PULLBACK oppure BREAKOUT_RETEST oppure NESSUN SETUP
+TIPO_ORDINE=MARKET BUY oppure MARKET SELL oppure BUY LIMIT oppure SELL LIMIT oppure BUY STOP oppure SELL STOP oppure NESSUN ORDINE
+ENTRY=prezzo o N/D
+STOP_LOSS=prezzo o N/D
+INVALIDAZIONE=prezzo o N/D
+TP1=prezzo o N/D
+TP2=prezzo o N/D
+TP3=prezzo o N/D
+RISK_REWARD=rapporto o N/D
+CONFIDENCE=numero da 0 a 100
+TRADE_SCORE=numero da 0 a 100
+DECISIONE=ENTRA SUBITO oppure ORDINE PENDENTE oppure NON OPERARE
+PARZIALE=regola o N/D
+BREAKEVEN=regola o N/D
+TRAILING=regola o N/D
+ANALISI=frase breve massimo 240 caratteri
+MOTIVO_NO_TRADE=frase breve o vuoto
 """
 
 # =========================
-# GEMINI ANALYSIS
+# GEMINI
 # =========================
 
 def call_gemini(prompt, img):
     response = model.generate_content(
         [prompt, img],
         generation_config={
-            "temperature": 0.15,
-            "top_p": 0.8,
+            "temperature": 0.10,
+            "top_p": 0.75,
             "top_k": 20,
-            "max_output_tokens": 2048,
+            "max_output_tokens": 1200
         }
     )
 
@@ -661,19 +629,17 @@ def call_gemini(prompt, img):
 
 def repair_prompt(previous_text, symbol, timeframe, profile):
     return f"""
-La risposta precedente non è valida o non rispetta le regole.
+La risposta precedente non rispetta il formato KEY=VALUE.
 
-Devi correggerla.
+Correggi.
 
-REGOLE:
-- Rispondi SOLO con JSON valido.
-- Se non sei sicuro, metti NO TRADE.
-- Se LONG o SHORT, devi dare entry, stop_loss, invalidation_level, tp1, tp2, tp3 e risk_reward numerici.
-- Se manca anche un solo numero, devi mettere NO TRADE.
-- Se trade_score sotto 72, devi mettere NO TRADE.
-- Se confidence sotto 65, devi mettere NO TRADE.
-- Non usare markdown.
-- Non usare ASPETTA.
+Regole:
+Rispondi SOLO con righe KEY=VALUE.
+Non usare JSON.
+Non usare markdown.
+Ogni campo una sola riga.
+Se non sei sicuro, metti NO TRADE.
+Se LONG o SHORT mancano numeri, metti NO TRADE.
 
 Strumento: {symbol}
 Timeframe: {timeframe}
@@ -682,44 +648,28 @@ Profilo: {profile}
 Risposta precedente:
 {previous_text}
 
-Restituisci SOLO il JSON corretto con questo schema:
+Campi obbligatori:
 
-{{
-  "verdetto": "LONG oppure SHORT oppure NO TRADE",
-  "bias": "LONG oppure SHORT oppure NEUTRO",
-  "setup_quality": "A+ oppure B oppure C",
-  "market_regime": "PULLBACK IN TREND oppure BREAKOUT + RETEST oppure BREAKOUT FORTE oppure RANGE oppure CHOPPY / SPORCO oppure REVERSAL",
-  "setup_type": "PULLBACK oppure BREAKOUT_RETEST oppure BREAKOUT oppure NESSUN SETUP",
-  "tipo_ordine": "MARKET BUY oppure MARKET SELL oppure BUY LIMIT oppure SELL LIMIT oppure BUY STOP oppure SELL STOP oppure NESSUN ORDINE",
-  "trade_score": 0,
-  "confidence": 0,
-  "decisione_operativa": "ENTRA SUBITO oppure ORDINE PENDENTE oppure NON OPERARE",
-  "trade_setup": {{
-    "entry": "",
-    "stop_loss": "",
-    "invalidation_level": "",
-    "tp1": "",
-    "tp2": "",
-    "tp3": "",
-    "risk_reward": ""
-  }},
-  "gestione": {{
-    "parziale": "",
-    "breakeven": "",
-    "trailing": ""
-  }},
-  "checklist": {{
-    "trend": "",
-    "struttura": "",
-    "zona": "",
-    "momentum": "",
-    "rsi": "",
-    "ema": "",
-    "risk_reward": ""
-  }},
-  "analisi": "",
-  "motivo_no_trade": ""
-}}
+VERDETTO=NO TRADE
+BIAS=NEUTRO
+SETUP_QUALITY=C
+SETUP_TYPE=NESSUN SETUP
+TIPO_ORDINE=NESSUN ORDINE
+ENTRY=N/D
+STOP_LOSS=N/D
+INVALIDAZIONE=N/D
+TP1=N/D
+TP2=N/D
+TP3=N/D
+RISK_REWARD=N/D
+CONFIDENCE=0
+TRADE_SCORE=0
+DECISIONE=NON OPERARE
+PARZIALE=N/D
+BREAKEVEN=N/D
+TRAILING=N/D
+ANALISI=Risposta precedente non valida. Segnale annullato per sicurezza.
+MOTIVO_NO_TRADE=Formato non valido o setup non chiaro.
 """
 
 
@@ -744,35 +694,34 @@ def analyze_chart(image_file, symbol, timeframe, account_size, risk_percent, pro
         )
 
         first_text = call_gemini(prompt, img)
+        data = parse_key_value_response(first_text)
 
-        try:
-            data = normalize_result(safe_json_loads(first_text))
-        except Exception:
+        required_keys = list(default_result().keys())
+        missing_keys = [key for key in required_keys if key not in data]
+
+        if missing_keys:
             repair_text = call_gemini(repair_prompt(first_text, symbol, timeframe, profile), img)
-            data = normalize_result(safe_json_loads(repair_text))
+            data = parse_key_value_response(repair_text)
 
         if not valid_trade(data):
-            if data.get("verdetto") in ["LONG", "SHORT"]:
-                repair_text = call_gemini(repair_prompt(result_to_json(data), symbol, timeframe, profile), img)
-                try:
-                    repaired = normalize_result(safe_json_loads(repair_text))
-                    if valid_trade(repaired):
-                        return result_to_json(repaired)
-                except Exception:
-                    pass
+            if data.get("VERDETTO") in ["LONG", "SHORT"]:
+                repair_text = call_gemini(repair_prompt(result_to_text(data), symbol, timeframe, profile), img)
+                repaired = parse_key_value_response(repair_text)
+
+                if valid_trade(repaired):
+                    return result_to_text(repaired)
 
                 data = force_no_trade(
-                    data,
-                    "Segnale bloccato: non ha superato i filtri minimi. Meglio NO TRADE che segnale debole."
+                    "Segnale bloccato. Non ha superato i filtri della ProTrade Fixed Strategy."
                 )
 
-        return result_to_json(data)
+        return result_to_text(data)
 
     except Exception as e:
-        data = default_result()
-        data["analisi"] = f"Errore analisi: {e}"
-        data["motivo_no_trade"] = f"Errore analisi: {e}"
-        return result_to_json(data)
+        data = force_no_trade(
+            f"Errore tecnico durante analisi. Segnale annullato per sicurezza. Dettaglio: {e}"
+        )
+        return result_to_text(data)
 
 
 def save_history(mode, symbol, timeframe, result):
@@ -792,6 +741,7 @@ with st.sidebar:
     st.markdown("### ⚡ Modalità AI")
 
     profiles = ["Challenge", "Standard", "Funded", "Scalping"]
+
     st.session_state.profile = st.radio(
         "Profilo",
         profiles,
@@ -865,7 +815,7 @@ now = datetime.now()
 st.markdown(f"""
 <div class="header">
     <div class="brand">⚡ ProTrade AI</div>
-    <div class="sub">Core Signal Strategy · filtra segnali deboli · {now.strftime('%d/%m/%Y %H:%M:%S')}</div>
+    <div class="sub">Fixed Strategy · stesso ragionamento sempre · {now.strftime('%d/%m/%Y %H:%M:%S')}</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -876,7 +826,7 @@ st.markdown(f"""
 st.markdown(f"""
 <div class="card">
     <h3>{symbol} · {timeframe}</h3>
-    <div class="small">Carica uno screenshot completo del grafico con prezzo, scala, candele, EMA e RSI visibili.</div>
+    <div class="small">Strategia fissa: Trend → Pullback/Retest → Filtro → Segnale o No Trade.</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -909,7 +859,13 @@ if analyze_clicked and uploaded_file:
 
         st.session_state.last_result = result
         st.session_state.last_update = datetime.now().strftime("%H:%M:%S")
-        save_history(st.session_state.profile, symbol, timeframe, result)
+
+        save_history(
+            st.session_state.profile,
+            symbol,
+            timeframe,
+            result
+        )
 
 elif analyze_clicked and not uploaded_file:
     st.warning("Carica prima uno screenshot.")
@@ -919,14 +875,10 @@ elif analyze_clicked and not uploaded_file:
 # =========================
 
 if st.session_state.last_result:
-    data = normalize_result(safe_json_loads(st.session_state.last_result))
+    data = parse_key_value_response(st.session_state.last_result)
 
-    verdict = data["verdetto"]
+    verdict = data["VERDETTO"]
     css_class, color, icon = signal_style(verdict)
-
-    setup = data["trade_setup"]
-    gestione = data["gestione"]
-    checklist = data["checklist"]
 
     st.markdown(f"""
     <div class="signal {css_class}">
@@ -934,13 +886,13 @@ if st.session_state.last_result:
             <div>
                 <div class="signal-title" style="color:{color};">{icon} {verdict}</div>
                 <div class="small">
-                    {data["tipo_ordine"]} · {data["decisione_operativa"]} · Setup {data["setup_quality"]} · Confidence {data["confidence"]}%
+                    {data["TIPO_ORDINE"]} · {data["DECISIONE"]} · Setup {data["SETUP_QUALITY"]} · Confidence {data["CONFIDENCE"]}%
                 </div>
             </div>
             <div style="text-align:right;">
-                <div class="small">Market Regime</div>
-                <div style="font-weight:900;font-size:16px;">{data["market_regime"]}</div>
-                <div class="small">Score {data["trade_score"]}/100</div>
+                <div class="small">Setup Type</div>
+                <div style="font-weight:900;font-size:16px;">{data["SETUP_TYPE"]}</div>
+                <div class="small">Score {data["TRADE_SCORE"]}/100</div>
             </div>
         </div>
     </div>
@@ -952,7 +904,7 @@ if st.session_state.last_result:
         st.markdown(f"""
         <div class="metric">
             <div class="metric-title">ENTRY</div>
-            <div class="metric-value" style="color:#00E676;">{setup["entry"]}</div>
+            <div class="metric-value" style="color:#00E676;">{data["ENTRY"]}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -960,7 +912,7 @@ if st.session_state.last_result:
         st.markdown(f"""
         <div class="metric">
             <div class="metric-title">STOP LOSS</div>
-            <div class="metric-value" style="color:#FF5252;">{setup["stop_loss"]}</div>
+            <div class="metric-value" style="color:#FF5252;">{data["STOP_LOSS"]}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -968,15 +920,15 @@ if st.session_state.last_result:
         st.markdown(f"""
         <div class="metric">
             <div class="metric-title">TP1</div>
-            <div class="metric-value" style="color:#4FC3F7;">{setup["tp1"]}</div>
+            <div class="metric-value" style="color:#4FC3F7;">{data["TP1"]}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with c4:
         st.markdown(f"""
         <div class="metric">
-            <div class="metric-title">RR</div>
-            <div class="metric-value" style="color:#FFD54F;">{setup["risk_reward"]}</div>
+            <div class="metric-title">RISK / REWARD</div>
+            <div class="metric-value" style="color:#FFD54F;">{data["RISK_REWARD"]}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -986,7 +938,7 @@ if st.session_state.last_result:
         st.markdown(f"""
         <div class="metric">
             <div class="metric-title">INVALIDAZIONE</div>
-            <div class="metric-value" style="color:#FFB74D;">{setup["invalidation_level"]}</div>
+            <div class="metric-value" style="color:#FFB74D;">{data["INVALIDAZIONE"]}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -994,7 +946,7 @@ if st.session_state.last_result:
         st.markdown(f"""
         <div class="metric">
             <div class="metric-title">TP2</div>
-            <div class="metric-value" style="color:#4FC3F7;">{setup["tp2"]}</div>
+            <div class="metric-value" style="color:#4FC3F7;">{data["TP2"]}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1002,7 +954,7 @@ if st.session_state.last_result:
         st.markdown(f"""
         <div class="metric">
             <div class="metric-title">TP3</div>
-            <div class="metric-value" style="color:#4FC3F7;">{setup["tp3"]}</div>
+            <div class="metric-value" style="color:#4FC3F7;">{data["TP3"]}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1017,27 +969,30 @@ if st.session_state.last_result:
     left, middle, right = st.columns([1, 1, 1.4])
 
     with left:
-        st.markdown('<div class="card"><h4>Checklist</h4>', unsafe_allow_html=True)
-        for k, v in checklist.items():
-            st.write(f"**{k}:** {v}")
+        st.markdown('<div class="card"><h4>Gestione</h4>', unsafe_allow_html=True)
+        st.write(f"**Parziale:** {data['PARZIALE']}")
+        st.write(f"**Breakeven:** {data['BREAKEVEN']}")
+        st.write(f"**Trailing:** {data['TRAILING']}")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with middle:
-        st.markdown('<div class="card"><h4>Gestione</h4>', unsafe_allow_html=True)
-        st.write(f"**Parziale:** {gestione['parziale']}")
-        st.write(f"**Breakeven:** {gestione['breakeven']}")
-        st.write(f"**Trailing:** {gestione['trailing']}")
+        st.markdown('<div class="card"><h4>Filtro</h4>', unsafe_allow_html=True)
+        st.write(f"**Bias:** {data['BIAS']}")
+        st.write(f"**Setup Quality:** {data['SETUP_QUALITY']}")
+        st.write(f"**Tipo ordine:** {data['TIPO_ORDINE']}")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with right:
         st.markdown('<div class="card"><h4>Analisi</h4>', unsafe_allow_html=True)
-        st.write(data["analisi"])
-        if data["verdetto"] == "NO TRADE":
-            st.warning(data["motivo_no_trade"])
+        st.write(data["ANALISI"])
+
+        if data["VERDETTO"] == "NO TRADE":
+            st.warning(data["MOTIVO_NO_TRADE"])
+
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with st.expander("JSON completo"):
-        st.code(st.session_state.last_result, language="json")
+    with st.expander("Risposta completa KEY=VALUE"):
+        st.code(st.session_state.last_result, language="text")
 
 # =========================
 # HISTORY
@@ -1049,7 +1004,7 @@ if st.session_state.history:
 
     for item in reversed(st.session_state.history[-5:]):
         with st.expander(f"{item['time']} · {item['mode']} · {item['symbol']} {item['timeframe']}"):
-            st.code(item["result"], language="json")
+            st.code(item["result"], language="text")
 
 st.markdown("---")
 st.caption("⚠️ ProTrade AI è uno strumento di supporto. Non è consulenza finanziaria. Usa sempre gestione del rischio.")
